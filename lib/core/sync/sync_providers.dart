@@ -132,7 +132,7 @@ class SyncError extends SyncState {
 
 /// Notifier that orchestrates TPV linking, sync, heartbeat, and realtime.
 class SyncController extends Notifier<SyncState> {
-  Timer? _periodicPushTimer;
+  Timer? _periodicReconcileTimer;
   Future<void> _syncChain = Future<void>.value();
 
   @override
@@ -157,6 +157,7 @@ class SyncController extends Notifier<SyncState> {
       state = const SyncIdle();
       _startRealtime();
       _startHeartbeat();
+      _startPeriodicReconcile();
     } on TpvActivationException catch (e) {
       state = SyncActivationFailed(e.message);
     } catch (e) {
@@ -201,6 +202,7 @@ class SyncController extends Notifier<SyncState> {
     debugPrint('[SYNC] TPV verified on server: ${serverStatus.tpvName}');
     _startRealtime();
     _startHeartbeat();
+    _startPeriodicReconcile();
     // Pull inicial en el arranque: descarga la configuración (métodos de pago,
     // catálogo, clientes) para que las pantallas no dependan del fallback local.
     // ignore: discarded_futures
@@ -310,27 +312,34 @@ class SyncController extends Notifier<SyncState> {
             await ref.read(syncPushServiceProvider).pushAll();
         if (pushResult.pushed > 0 || pushResult.failed > 0) {
           debugPrint(
-            '[SYNC_CONTROLLER] periodic push: '
+            '[SYNC_CONTROLLER] background push: '
             'pushed=${pushResult.pushed} failed=${pushResult.failed}',
           );
         }
       } catch (e) {
-        debugPrint('[SYNC_CONTROLLER] periodic push failed: $e');
+        debugPrint('[SYNC_CONTROLLER] background push failed: $e');
       }
       try {
         final pullResult = await ref.read(syncRepositoryProvider).pullAll();
         debugPrint(
-          '[SYNC_CONTROLLER] periodic pull: ${pullResult.total} rows '
+          '[SYNC_CONTROLLER] background pull: ${pullResult.total} rows '
           '(cats=${pullResult.categories} brands=${pullResult.brands} '
           'suppliers=${pullResult.suppliers} prods=${pullResult.products} '
           'vars=${pullResult.variants} custs=${pullResult.customers} '
-          'users=${pullResult.users} receipts=${pullResult.receiptConfigs})'
+          'users=${pullResult.users} receipts=${pullResult.receiptConfigs} '
+          'tpv_inventory=${pullResult.tpvInventory})'
           '${pullResult.hasErrors ? ' errors=${pullResult.failedTables}' : ''}',
         );
       } catch (e) {
-        debugPrint('[SYNC_CONTROLLER] periodic pull failed: $e');
+        debugPrint('[SYNC_CONTROLLER] background pull failed: $e');
       }
     });
+  }
+
+  /// Sincronización de fondo (push + pull) expuesta para reconexión de red y
+  /// disparos externos. No modifica SyncState para no interferir con la UI.
+  Future<void> reconcileInBackground() {
+    return _syncInBackground();
   }
 
   Future<void> _enqueueSync(Future<void> Function() operation) {
@@ -345,6 +354,7 @@ class SyncController extends Notifier<SyncState> {
   Future<void> unlink() async {
     _stopRealtime();
     _stopHeartbeat();
+    _stopPeriodicReconcile();
     try {
       await push();
     } catch (_) {
@@ -365,42 +375,44 @@ class SyncController extends Notifier<SyncState> {
   }
 
   /// Heartbeat: actualiza last_seen_at y detecta desconexiones.
-  /// También intenta push periódico de la cola offline.
+  /// Verifica si el dispositivo sigue conectado al servidor. Ya NO gobierna
+  /// la reconciliación periódica: el pull silencioso sigue activo aunque el
+  /// heartbeat reporte desconexión, porque el sync frontal reintenta solo.
   void _startHeartbeat() {
     final heartbeat = ref.read(tpvHeartbeatServiceProvider);
     if (heartbeat.isActive) return;
     heartbeat.start(
       onDisconnected: () {
         debugPrint('[SYNC_CONTROLLER] heartbeat detected disconnection');
-        _stopRealtime();
-        _stopPeriodicPush();
         state = const SyncError('TPV desconectado del servidor');
       },
     );
-    _startPeriodicPush();
   }
 
-  /// Sync periódico silencioso: cada 30 segundos ejecuta push + pull
+  /// Reconciliación periódica silenciosa: cada 15 segundos ejecuta push + pull
   /// SIN modificar el estado global (no cambia SyncState). Así:
   /// 1. No interfiere con la UI ni con syncs manuales del usuario.
   /// 2. No se bloquea si el estado anterior fue SyncError.
   /// 3. Siempre reintenta al siguiente ciclo, sin importar errores previos.
-  /// 30s es compromiso entre frescura (web→POS) y consumo batería/red.
-  void _startPeriodicPush() {
-    _stopPeriodicPush();
-    _periodicPushTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+  /// 4. No depende de Realtime ni del heartbeat: garantiza que los cambios
+  ///    hechos desde la web (cierres, devoluciones, ediciones de carga) se
+  ///    reflejen en el POS aunque los eventos Realtime no lleguen al móvil.
+  /// 15s es compromiso entre frescura (web→POS) y consumo batería/red.
+  void _startPeriodicReconcile() {
+    _stopPeriodicReconcile();
+    _periodicReconcileTimer =
+        Timer.periodic(const Duration(seconds: 15), (_) async {
       await _syncInBackground();
     });
   }
 
-  void _stopPeriodicPush() {
-    _periodicPushTimer?.cancel();
-    _periodicPushTimer = null;
+  void _stopPeriodicReconcile() {
+    _periodicReconcileTimer?.cancel();
+    _periodicReconcileTimer = null;
   }
 
   void _stopHeartbeat() {
     ref.read(tpvHeartbeatServiceProvider).stop();
-    _stopPeriodicPush();
   }
 
   /// Inicia las suscripciones Realtime. Se llama después de vincular o

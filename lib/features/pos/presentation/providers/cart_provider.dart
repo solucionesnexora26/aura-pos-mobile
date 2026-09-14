@@ -34,7 +34,7 @@ class CartNotifier extends Notifier<CartState> {
     final effectivePrice = product.priceForVariant(variant);
     final available = _availableStock(product, variant);
     final existingIndex = state.items.indexWhere(
-      (i) => i.product.id == product.id && i.variant?.id == variant?.id,
+      (i) => i.product.id == product.id && i.variant?.id == variant?.id && !i.isReturn,
     );
 
     if (existingIndex >= 0) {
@@ -63,11 +63,51 @@ class CartNotifier extends Notifier<CartState> {
     }
   }
 
-  void updateQuantity(String itemId, double quantity) {
-    if (quantity <= 0) {
-      removeItem(itemId);
-      return;
+  /// Registra una devolución del producto. Las devoluciones no respetan tope
+  /// de stock (reincorporan inventario) y se acumulan en su propia línea (con
+  /// cantidad negativa) para poder coexistir con la venta del mismo producto
+  /// en el mismo ticket.
+  void addReturnProduct(
+    ProductEntity product, {
+    ProductVariantEntity? variant,
+    double quantity = 1,
+    String? reason,
+    String? returnedFromTicket,
+  }) {
+    if (quantity <= 0) return;
+    final existingIndex = state.items.indexWhere(
+      (i) => i.product.id == product.id && i.variant?.id == variant?.id && i.isReturn,
+    );
+
+    if (existingIndex >= 0) {
+      final current = state.items[existingIndex].quantity;
+      final updated = state.items[existingIndex].copyWith(
+        quantity: current - quantity,
+        returnReason: reason ?? state.items[existingIndex].returnReason,
+        returnedFromTicket: returnedFromTicket ??
+            state.items[existingIndex].returnedFromTicket,
+      );
+      final newItems = List<CartItemEntity>.from(state.items);
+      newItems[existingIndex] = updated;
+      state = state.copyWith(items: newItems);
+    } else {
+      final item = CartItemEntity(
+        id: const Uuid().v4(),
+        product: product,
+        variant: variant,
+        quantity: -quantity,
+        unitPrice: product.priceForVariant(variant),
+        discount: 0,
+        taxRate: product.taxRate,
+        isReturn: true,
+        returnReason: reason,
+        returnedFromTicket: returnedFromTicket,
+      );
+      state = state.copyWith(items: [...state.items, item]);
     }
+  }
+
+  void updateQuantity(String itemId, double quantity) {
     CartItemEntity? item;
     for (final i in state.items) {
       if (i.id == itemId) {
@@ -76,6 +116,26 @@ class CartNotifier extends Notifier<CartState> {
       }
     }
     if (item == null) return;
+
+    if (item.isReturn) {
+      // En devoluciones la cantidad es negativa: al llegar a 0 (o volverse
+      // positiva) la línea se elimina. No hay tope de stock.
+      if (quantity >= 0) {
+        removeItem(itemId);
+        return;
+      }
+      state = state.copyWith(
+        items: state.items
+            .map((i) => i.id == itemId ? i.copyWith(quantity: quantity) : i)
+            .toList(),
+      );
+      return;
+    }
+
+    if (quantity <= 0) {
+      removeItem(itemId);
+      return;
+    }
     final target = quantity.clamp(0.0, _availableStock(item.product, item.variant));
     if (target <= 0) {
       removeItem(itemId);

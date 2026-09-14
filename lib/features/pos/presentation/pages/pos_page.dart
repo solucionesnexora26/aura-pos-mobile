@@ -16,6 +16,7 @@ import '../widgets/cart_panel.dart';
 import '../widgets/cart_summary_bar.dart';
 import '../widgets/product_quantity_badge.dart';
 import '../widgets/quantity_editor_sheet.dart';
+import '../widgets/return_product_sheet.dart';
 
 class PosPage extends HookConsumerWidget {
   const PosPage({super.key});
@@ -65,7 +66,9 @@ class PosPage extends HookConsumerWidget {
                             icon: const Icon(Icons.clear),
                             onPressed: () {
                               searchCtrl.clear();
-                              ref.read(productFilterProvider.notifier).setSearch('');
+                              ref
+                                  .read(productFilterProvider.notifier)
+                                  .setSearch('');
                             },
                           ),
                       ],
@@ -77,7 +80,11 @@ class PosPage extends HookConsumerWidget {
               IconButton.filled(
                 onPressed: () => context.goNamed(RouteNames.openSales),
                 icon: Badge(
-                  isLabelVisible: ref.watch(openSalesStreamProvider).valueOrNull?.isNotEmpty ?? false,
+                  isLabelVisible: ref
+                          .watch(openSalesStreamProvider)
+                          .valueOrNull
+                          ?.isNotEmpty ??
+                      false,
                   child: const Icon(Icons.receipt_long_outlined),
                 ),
                 tooltip: 'Ventas abiertas',
@@ -87,20 +94,29 @@ class PosPage extends HookConsumerWidget {
         ),
         const CategoryFilterBar(),
         Expanded(
-          child: productsAsync.when(
-            loading: () => const AppLoadingView(message: 'Cargando productos…'),
-            error: (e, _) => AppErrorView(message: e.toString()),
-            data: (products) {
-              final available = products.where((p) => !p.isOutOfStock).toList();
-              if (available.isEmpty) {
-                return const AppEmptyView(
-                  message: 'No hay productos disponibles en este TPV.',
-                  icon: Icons.inventory_2_outlined,
-                );
-              }
-              return _PosProductGrid(
-                products: available,
-                bottomPadding: isWide || cart.isEmpty ? 12 : 96,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return productsAsync.when(
+                loading: () {
+                  return const AppLoadingView(message: 'Cargando productos…');
+                },
+                error: (e, _) {
+                  return AppErrorView(message: e.toString());
+                },
+                data: (products) {
+                  final available =
+                      products.where((p) => !p.isOutOfStock).toList();
+                  if (available.isEmpty) {
+                    return const AppEmptyView(
+                      message: 'No hay productos disponibles en este TPV.',
+                      icon: Icons.inventory_2_outlined,
+                    );
+                  }
+                  return _PosProductGrid(
+                    products: available,
+                    bottomPadding: isWide || cart.isEmpty ? 12 : 96,
+                  );
+                },
               );
             },
           ),
@@ -186,7 +202,10 @@ class _PosProductGrid extends ConsumerWidget {
         childAspectRatio: 0.8,
       ),
       itemCount: products.length,
-      itemBuilder: (context, i) => _PosProductTile(product: products[i]),
+      itemBuilder: (context, i) {
+        final t = products[i];
+        return _PosProductTile(product: t);
+      },
     );
   }
 }
@@ -201,11 +220,22 @@ class _PosProductTile extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final outOfStock = product.isOutOfStock;
     final selected = ref.watch(cartProvider.select(
-      (c) => (c.quantityForProduct(product.id), c.itemForProduct(product.id)?.id),
+      (c) =>
+          (c.quantityForProduct(product.id), c.itemForProduct(product.id)?.id),
     ));
     final qty = selected.$1;
     final itemId = selected.$2;
     final showBadge = !product.hasVariants && qty > 0 && itemId != null;
+    final hasVariantStock = product.hasVariants && product.variants.isNotEmpty;
+    final stock = product.trackStock
+        ? (hasVariantStock
+            ? product.variants
+                .where((v) => v.isActive)
+                .fold(0.0, (acc, v) => acc + v.stockQuantity)
+            : product.stockQuantity)
+        : 0.0;
+    final lowStock =
+        product.trackStock && stock <= product.lowStockThreshold;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -236,23 +266,87 @@ class _PosProductTile extends ConsumerWidget {
                 Expanded(
                   child: Container(
                     color: scheme.surfaceContainerHighest,
-                    child: Icon(Icons.inventory_2_outlined, size: 40, color: scheme.onSurfaceVariant),
+                    child: Icon(Icons.inventory_2_outlined,
+                        size: 40, color: scheme.onSurfaceVariant),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: text.labelSmall),
-                      const SizedBox(height: 4),
-                      Text(AppFormatters.currency(product.price),
-                          style: text.labelMedium?.copyWith(color: scheme.primary)),
-                    ],
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(product.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.labelSmall),
+                        const SizedBox(height: 4),
+                        Text(AppFormatters.currency(product.price),
+                            style: text.labelMedium
+                                ?.copyWith(color: scheme.primary)),
+                        const Spacer(),
+                        Align(
+                          alignment: Alignment.bottomRight,
+                          child: TextButton.icon(
+                            onPressed: () => _onDevolverTapped(context, ref),
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(0, 28),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            icon: const Icon(Icons.undo, size: 14),
+                            label: const Text('Devolver',
+                                style: TextStyle(fontSize: 11)),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
+            if (product.trackStock)
+              Positioned(
+                top: 6,
+                left: 6,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: scheme.surface,
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.inventory_2_outlined,
+                          size: 11, color: lowStock
+                              ? scheme.error
+                              : scheme.primary),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Stock ${AppFormatters.quantity(stock)}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          height: 1.1,
+                          color:
+                              lowStock ? scheme.error : scheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             if (showBadge)
               Positioned(
                 top: 8,
@@ -267,12 +361,14 @@ class _PosProductTile extends ConsumerWidget {
                 color: Colors.black45,
                 alignment: Alignment.center,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: scheme.error,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text('Sin stock', style: text.labelSmall?.copyWith(color: scheme.onError)),
+                  child: Text('Sin stock',
+                      style: text.labelSmall?.copyWith(color: scheme.onError)),
                 ),
               ),
           ],
@@ -281,7 +377,43 @@ class _PosProductTile extends ConsumerWidget {
     );
   }
 
-  void _openQtyEditor(BuildContext context, WidgetRef ref, String itemId) async {
+  void _onDevolverTapped(BuildContext context, WidgetRef ref) {
+    if (product.hasVariants && product.variants.isNotEmpty) {
+      _showVariantSheet(context, ref, product);
+    } else {
+      _openReturnSheet(context, ref, product);
+    }
+  }
+
+  Future<void> _openReturnSheet(
+      BuildContext context, WidgetRef ref, ProductEntity product,
+      {ProductVariantEntity? variant}) async {
+    final selection = await showModalBottomSheet<ReturnSelection>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => ReturnProductSheet(product: product, variant: variant),
+    );
+    if (selection == null || !context.mounted) return;
+    ref.read(cartProvider.notifier).addReturnProduct(
+          product,
+          variant: variant,
+          quantity: selection.quantity,
+          reason: selection.reason,
+          returnedFromTicket: selection.returnedFromTicket,
+        );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content:
+            Text('Devolución de ${selection.quantity.toInt()} ud agregada'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _openQtyEditor(
+      BuildContext context, WidgetRef ref, String itemId) async {
     final cart = ref.read(cartProvider);
     final item = cart.itemForProduct(product.id);
     if (item == null) return;
@@ -301,7 +433,8 @@ class _PosProductTile extends ConsumerWidget {
     ref.read(cartProvider.notifier).updateQuantity(item.id, result);
   }
 
-  void _showVariantSheet(BuildContext context, WidgetRef ref, ProductEntity product) {
+  void _showVariantSheet(
+      BuildContext context, WidgetRef ref, ProductEntity product) {
     showModalBottomSheet<void>(
       context: context,
       builder: (_) => Padding(
@@ -315,7 +448,30 @@ class _PosProductTile extends ConsumerWidget {
             ...product.variants.map(
               (v) => ListTile(
                 title: Text(v.name),
-                trailing: Text(AppFormatters.currency(product.priceForVariant(v))),
+                subtitle:
+                    Text(AppFormatters.currency(product.priceForVariant(v))),
+                trailing: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _openReturnSheet(context, ref, product, variant: v);
+                      },
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 28),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      icon: const Icon(Icons.undo, size: 14),
+                      label: const Text('Devolver',
+                          style: TextStyle(fontSize: 11)),
+                    ),
+                  ],
+                ),
                 onTap: () {
                   final added = ref
                       .read(cartProvider.notifier)
@@ -346,9 +502,12 @@ class _ScannerSheet extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = useMemoized(MobileScannerController.new);
-    useEffect(() {
-      return controller.dispose;
-    }, [controller],);
+    useEffect(
+      () {
+        return controller.dispose;
+      },
+      [controller],
+    );
 
     return MobileScanner(
       controller: controller,
@@ -356,7 +515,8 @@ class _ScannerSheet extends HookConsumerWidget {
         final barcode = capture.barcodes.firstOrNull?.rawValue;
         if (barcode == null) return;
         await controller.stop();
-        final result = await ref.read(getProductByBarcodeUseCaseProvider).call(barcode);
+        final result =
+            await ref.read(getProductByBarcodeUseCaseProvider).call(barcode);
         result.fold(
           (_) {},
           (product) {

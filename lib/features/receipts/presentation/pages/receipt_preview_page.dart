@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/state_views.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/database/tables/sales_tables.dart';
 import '../../../customers/presentation/providers/customer_providers.dart';
 import '../../../pos/data/repositories/sale_repository_impl.dart';
@@ -233,6 +234,49 @@ class _ReceiptBody extends StatelessWidget {
     final displayName = businessName != null && businessName.isNotEmpty
         ? businessName
         : 'Aura POS';
+    final hasReturns = sale.items.any((i) => i.isReturn);
+    final saleItems = sale.items.where((i) => !i.isReturn).toList();
+    final returnItems = sale.items.where((i) => i.isReturn).toList();
+    final returnsTotal =
+        returnItems.fold<double>(0.0, (sum, i) => sum + i.lineTotal).abs();
+
+    Widget itemWidget(SaleItemRow item) {
+      final isReturn = item.isReturn;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.productNameSnapshot, style: text.bodyMedium),
+                Text(
+                  '${AppFormatters.quantity(item.quantity.abs())} × ${AppFormatters.currency(item.unitPrice)}',
+                  style: text.bodySmall?.copyWith(
+                    color: isReturn ? scheme.error : scheme.onSurfaceVariant,
+                  ),
+                ),
+                if (isReturn && item.returnReasonLabel != null)
+                  Text(
+                    'Devolución · ${item.returnReasonLabel}',
+                    style: text.labelSmall?.copyWith(
+                      color: scheme.error,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+              ],
+            )),
+            Text(
+              AppFormatters.currency(item.lineTotal),
+              style: text.bodyMedium?.copyWith(
+                color: isReturn ? scheme.error : null,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -283,6 +327,11 @@ class _ReceiptBody extends StatelessWidget {
                             style: text.bodySmall),
                       const Text('Recibo de Venta',
                           style: TextStyle(fontSize: 12)),
+                      if (hasReturns)
+                        Text(
+                          'Con devolución',
+                          style: TextStyle(fontSize: 12, color: scheme.error),
+                        ),
                     ]),
                   ),
                   const Divider(height: 32),
@@ -305,29 +354,48 @@ class _ReceiptBody extends StatelessWidget {
                   const Divider(height: 24),
 
                   // Ítems
-                  ...sale.items.map((item) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      children: [
-                        Expanded(child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(item.productNameSnapshot, style: text.bodyMedium),
-                            Text(
-                              '${AppFormatters.quantity(item.quantity)} × ${AppFormatters.currency(item.unitPrice)}',
-                              style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                            ),
-                          ],
-                        )),
-                        Text(AppFormatters.currency(item.lineTotal), style: text.bodyMedium),
-                      ],
-                    ),
-                  )),
+                  if (hasReturns) ...[
+                    Row(children: [
+                      Expanded(
+                        child: Text('VENTA',
+                            style: text.titleSmall?.copyWith(
+                                color: scheme.primary,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        AppFormatters.currency(
+                            saleItems.fold<double>(0, (s, i) => s + i.lineTotal)),
+                        style: text.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700, color: scheme.primary),
+                      ),
+                    ]),
+                    ...saleItems.map(itemWidget),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(
+                        child: Text('DEVOLUCIÓN',
+                            style: text.titleSmall?.copyWith(
+                                color: scheme.error, fontWeight: FontWeight.w800)),
+                      ),
+                      Text(
+                        '−${AppFormatters.currency(returnsTotal)}',
+                        style: text.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700, color: scheme.error),
+                      ),
+                    ]),
+                    ...returnItems.map(itemWidget),
+                  ] else
+                    ...sale.items.map(itemWidget),
 
                   const Divider(height: 24),
 
                   // Totales
                   _KV('Subtotal', AppFormatters.currency(sale.subtotal), text),
+                  if (hasReturns)
+                    _KV('Devoluciones', '−${AppFormatters.currency(returnsTotal)}',
+                        text,
+                        color: scheme.error),
                   if (sale.discountTotal > 0)
                     _KV('Descuento', '−${AppFormatters.currency(sale.discountTotal)}', text,
                         color: scheme.error),
@@ -335,9 +403,16 @@ class _ReceiptBody extends StatelessWidget {
                     _KV('Impuestos', AppFormatters.currency(sale.taxTotal), text),
                   const SizedBox(height: 8),
                   Row(children: [
-                    Expanded(child: Text('TOTAL', style: text.titleMedium?.copyWith(fontWeight: FontWeight.bold))),
-                    Text(AppFormatters.currency(sale.total),
-                        style: text.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: scheme.primary)),
+                    Expanded(
+                      child: Text(
+                        sale.total < 0 ? 'A FAVOR DEL CLIENTE' : 'TOTAL',
+                        style: text.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Text(AppFormatters.currency(sale.total.abs()),
+                        style: text.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: sale.total < 0 ? scheme.error : scheme.primary)),
                   ]),
 
                   if (sale.changeGiven > 0) ...[

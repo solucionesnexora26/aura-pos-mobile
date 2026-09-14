@@ -13,6 +13,12 @@ import 'core/sync/supabase_config.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  FlutterError.onError = (FlutterErrorDetails details) {
+    debugPrint('FLUTTER_ERROR >> ${details.exception.runtimeType}: '
+        '${details.exception}');
+    debugPrint('FLUTTER_ERROR_STACK >> ${details.toString()}');
+  };
+
   await initializeDateFormatting('es');
 
   // Hive se usa únicamente para preferencias no sensibles (tema, idioma,

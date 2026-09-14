@@ -84,10 +84,20 @@ class SyncRepository {
     final tpvStockMap = <String, double>{};
     final tpvVariantStockMap = <String, double>{};
     int tpvCount = 0;
+    bool tpvFetchFailed = false;
+    // Con semántica "reset por cargue": el RPC es la fuente de verdad del
+    // vehículo. Si responde OK (aunque sea vacío) el vehículo está VACÍO y el
+    // stock de todos los productos pasa a 0, porque un cargue define el
+    // inventario exacto y al cerrarse/anularse ya no hay nada a bordo. Solo si
+    // el RPC FALLA se conserva el último stock local hasta el próximo ciclo.
+    bool applyTpv = false;
     try {
       final rows = await _client.rpc('get_tpv_inventory');
       final list = (rows as List? ?? []);
       tpvCount = list.length;
+      debugPrint(
+        '[SyncRepository][TPV] rpc get_tpv_inventory ok -> rows=$tpvCount',
+      );
       await _db.delete(_db.tpvInventory).go();
       await _db.batch((batch) {
         for (final r in list) {
@@ -111,9 +121,29 @@ class SyncRepository {
           }
         }
       });
+      if (list.isNotEmpty) {
+        debugPrint('[SyncRepository][TPV] rows=$list');
+      }
+      // El RPC respondió: su resultado define el vehículo (vacío = 0).
+      applyTpv = true;
     } catch (e) {
+      tpvFetchFailed = true;
       failedTables.add('tpv_inventory: $e');
       debugPrint('[SyncRepository] Pull error (tpv_inventory): $e');
+    }
+    debugPrint(
+      '[SyncRepository][TPV] applyTpv=$applyTpv fetchFailed=$tpvFetchFailed',
+    );
+
+    // Si el RPC de inventario falló, conservar el stock local del vehículo
+    // (Drift) para no reemplazarlo por el stock del almacén durante el pull.
+    // El siguiente ciclo de reconciliación volverá a intentar el RPC.
+    Map<String, double>? preservedVariantStock;
+    if (tpvFetchFailed) {
+      preservedVariantStock = <String, double>{};
+      for (final v in await _db.select(_db.productVariants).get()) {
+        preservedVariantStock[v.id] = v.stockQuantity;
+      }
     }
 
     // Descargar catálogos y productos en paralelo, pasando stock del TPV
@@ -123,8 +153,8 @@ class SyncRepository {
       safePull('brands', _pullBrands),
       safePull('suppliers', _pullSuppliers),
       safePull('products', () => _pullProducts(
-        tpvStock: tpvStockMap.isNotEmpty ? tpvStockMap : null,
-        tpvVariantStock: tpvVariantStockMap.isNotEmpty ? tpvVariantStockMap : null,
+        tpvStock: applyTpv ? tpvStockMap : null,
+        preserveStock: tpvFetchFailed,
       )),
       safePull('product_variants', _pullVariants),
       safePull('customers', _pullCustomers),
@@ -132,6 +162,42 @@ class SyncRepository {
       safePull('receipt_configs', _pullReceiptConfig),
       safePull('payment_methods', _pullPaymentMethods),
     ]);
+
+    // Post-paso de variantes: WINS sobre product_variants.stock_quantity.
+    // Se ejecuta DESPUÉS de Future.wait para eliminar la carrera entre
+    // _pullProducts y _pullVariants (antes, cualquiera que terminara último
+    // sobreescribía el stock del vehículo con el del almacén).
+    if (tpvVariantStockMap.isNotEmpty) {
+      await _applyTpvVariantStock(tpvVariantStockMap);
+    } else if (preservedVariantStock != null &&
+        preservedVariantStock.isNotEmpty) {
+      await _applyTpvVariantStock(preservedVariantStock);
+    } else if (applyTpv) {
+      // RPC OK y sin partes cargadas: el vehículo está vacío, las variantes
+      // quedan en 0 (el cargue definía su contenido y ya se cerró/anuló).
+      await _applyTpvVariantStock(const <String, double>{}, zeroAll: true);
+    }
+
+    // Snapshot de verificación: qué quedó en local tras el ciclo (lo que la
+    // UI va a renderizar). Solo productos/variantes que vienen del RPC.
+    if (applyTpv) {
+      if (tpvStockMap.isEmpty && tpvVariantStockMap.isEmpty) {
+        debugPrint(
+          '[SyncRepository][TPV] vehículo VACÍO -> todo el stock quedó en 0',
+        );
+      } else {
+        final confirmed = <String, double>{};
+        for (final p in await _db.select(_db.products).get()) {
+          if (tpvStockMap.containsKey(p.id)) {
+            confirmed[p.id] = p.stockQuantity;
+          }
+        }
+        debugPrint(
+          '[SyncRepository][TPV] stock de productos confirmado en local '
+          '(UI) = $confirmed',
+        );
+      }
+    }
 
     return SyncPullResult(
       categories: catalogResults[0],
@@ -243,9 +309,26 @@ class SyncRepository {
 
   /// Descarga productos del backend y los escribe en local.
   /// Si se provee [tpvStock], aplica el stock del TPV en la misma transacción
-  /// para evitar parpadeo en la UI (stream se dispara solo una vez).
-  Future<int> _pullProducts({Map<String, double>? tpvStock, Map<String, double>? tpvVariantStock}) async {
+  /// para evitar parpadeo en la UI (stream se dispara solo una vez). Si
+  /// [preserveStock] es true (el RPC de inventario falló), conserva el stock
+  /// local del vehículo en lugar de sustituirlo por el stock del almacén.
+  Future<int> _pullProducts({
+    Map<String, double>? tpvStock,
+    bool preserveStock = false,
+  }) async {
     final rows = await _client.from('products').select('*');
+
+    // Snapshot del stock local por si hay que preservarlo (RPC fallido).
+    final localStock = <String, double>{};
+    if (preserveStock) {
+      for (final existing in await _db.select(_db.products).get()) {
+        localStock[existing.id] = existing.stockQuantity;
+      }
+      debugPrint(
+        '[SyncRepository][TPV] preserveStock=true (rpc fallido): conservando '
+        'stock local de ${localStock.length} productos',
+      );
+    }
 
     final pending = await (_db.select(_db.syncQueueItems)
           ..where((t) =>
@@ -267,7 +350,9 @@ class SyncRepository {
         // Si tpvStock no es null, usar el stock del TPV (0 si el producto no está).
         // Si tpvStock es null (sin inventario), usar el stock del servidor.
         final stockFromTpv = tpvStock != null ? (tpvStock[id] ?? 0) : null;
-        final stockValue = stockFromTpv ?? (_num(r['stock_quantity']) ?? 0);
+        final stockValue = preserveStock
+            ? (localStock[id] ?? 0)
+            : (stockFromTpv ?? (_num(r['stock_quantity']) ?? 0));
 
         await _db.into(_db.products).insert(
               ProductsCompanion.insert(
@@ -314,18 +399,32 @@ class SyncRepository {
           updatedAt: Value(DateTime.now()),
         ));
       }
-
-      // Aplicar stock de variantes del TPV.
-      if (tpvVariantStock != null && tpvVariantStock.isNotEmpty) {
-        await (_db.update(_db.productVariants))
-            .write(const ProductVariantsCompanion(stockQuantity: Value(0)));
-        for (final entry in tpvVariantStock.entries) {
-          await (_db.update(_db.productVariants)..where((t) => t.id.equals(entry.key)))
-              .write(ProductVariantsCompanion(stockQuantity: Value(entry.value)));
-        }
-      }
     });
     return upserted;
+  }
+
+  /// Aplica el stock por variante del vehículo (tpv_inventory) a la tabla
+  /// local de variantes. Este paso SIEMPRE se ejecuta después del resto del
+  /// pull (post-paso) para que el inventario del TPV gane sobre
+  /// `product_variants.stock_quantity` sin depender del orden de ejecución
+  /// de los pulls concurrentes.
+  Future<void> _applyTpvVariantStock(
+    Map<String, double> stockByVariantId, {
+    bool zeroAll = false,
+  }) async {
+    if (stockByVariantId.isEmpty && !zeroAll) return;
+    debugPrint(
+      '[SyncRepository][TPV] _applyTpvVariantStock zeroAll=$zeroAll '
+      'entries=${stockByVariantId.length}',
+    );
+    await _db.transaction(() async {
+      await (_db.update(_db.productVariants))
+          .write(const ProductVariantsCompanion(stockQuantity: Value(0)));
+      for (final entry in stockByVariantId.entries) {
+        await (_db.update(_db.productVariants)..where((t) => t.id.equals(entry.key)))
+            .write(ProductVariantsCompanion(stockQuantity: Value(entry.value)));
+      }
+    });
   }
 
   Future<int> _pullVariants() async {

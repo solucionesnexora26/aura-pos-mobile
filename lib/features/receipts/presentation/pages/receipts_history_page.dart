@@ -362,6 +362,7 @@ class _ReceiptCard extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final info = _statusInfo(sale.status);
     final when = sale.paidAt ?? sale.createdAt;
+    final hasReturns = sale.items.any((i) => i.isReturn);
     final paymentLabels = sale.payments.map((p) => _paymentLabel(p.method)).join(', ');
     final customer = sale.customerId == null
         ? null
@@ -455,6 +456,8 @@ class _ReceiptCard extends ConsumerWidget {
                     ),
                   ],
                   const Spacer(),
+                  if (hasReturns)
+                    _ReturnTag(),
                   _StatusPill(color: info.color, label: info.label),
                 ],
               ),
@@ -494,6 +497,33 @@ class _StatusPill extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+      ),
+    );
+  }
+}
+
+class _ReturnTag extends StatelessWidget {
+  const _ReturnTag();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: scheme.errorContainer,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          'Devolución',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: scheme.onErrorContainer,
+          ),
+        ),
       ),
     );
   }

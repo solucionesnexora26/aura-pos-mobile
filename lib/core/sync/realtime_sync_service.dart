@@ -69,7 +69,7 @@ class RealtimeSyncService {
       'Please check Realtime is enabled for the given connect parameters';
 
   /// Tablas que el móvil escucha. Deben estar en la publicación
-  /// `supabase_realtime` (migraciones 0001, 0015, 0018, 0024).
+  /// `supabase_realtime` (migraciones 0001, 0015, 0018, 0024, 0042).
   static const List<String> _watchedTables = [
     'products',
     'product_variants',
@@ -80,6 +80,7 @@ class RealtimeSyncService {
     'sale_items',
     'payments',
     'receipt_configs',
+    'tpv_inventory',
   ];
 
   /// Inicia las suscripciones Realtime. [onSync] se ejecuta cuando llega

@@ -23,6 +23,9 @@ mixin _$CartItemEntity {
   double get unitPrice => throw _privateConstructorUsedError;
   double get discount => throw _privateConstructorUsedError;
   double get taxRate => throw _privateConstructorUsedError;
+  bool get isReturn => throw _privateConstructorUsedError;
+  String? get returnReason => throw _privateConstructorUsedError;
+  String? get returnedFromTicket => throw _privateConstructorUsedError;
   String? get note => throw _privateConstructorUsedError;
 
   @JsonKey(ignore: true)
@@ -44,6 +47,9 @@ abstract class $CartItemEntityCopyWith<$Res> {
       double unitPrice,
       double discount,
       double taxRate,
+      bool isReturn,
+      String? returnReason,
+      String? returnedFromTicket,
       String? note});
 
   $ProductEntityCopyWith<$Res> get product;
@@ -70,6 +76,9 @@ class _$CartItemEntityCopyWithImpl<$Res, $Val extends CartItemEntity>
     Object? unitPrice = null,
     Object? discount = null,
     Object? taxRate = null,
+    Object? isReturn = null,
+    Object? returnReason = freezed,
+    Object? returnedFromTicket = freezed,
     Object? note = freezed,
   }) {
     return _then(_value.copyWith(
@@ -101,6 +110,18 @@ class _$CartItemEntityCopyWithImpl<$Res, $Val extends CartItemEntity>
           ? _value.taxRate
           : taxRate // ignore: cast_nullable_to_non_nullable
               as double,
+      isReturn: null == isReturn
+          ? _value.isReturn
+          : isReturn // ignore: cast_nullable_to_non_nullable
+              as bool,
+      returnReason: freezed == returnReason
+          ? _value.returnReason
+          : returnReason // ignore: cast_nullable_to_non_nullable
+              as String?,
+      returnedFromTicket: freezed == returnedFromTicket
+          ? _value.returnedFromTicket
+          : returnedFromTicket // ignore: cast_nullable_to_non_nullable
+              as String?,
       note: freezed == note
           ? _value.note
           : note // ignore: cast_nullable_to_non_nullable
@@ -145,6 +166,9 @@ abstract class _$$CartItemEntityImplCopyWith<$Res>
       double unitPrice,
       double discount,
       double taxRate,
+      bool isReturn,
+      String? returnReason,
+      String? returnedFromTicket,
       String? note});
 
   @override
@@ -171,6 +195,9 @@ class __$$CartItemEntityImplCopyWithImpl<$Res>
     Object? unitPrice = null,
     Object? discount = null,
     Object? taxRate = null,
+    Object? isReturn = null,
+    Object? returnReason = freezed,
+    Object? returnedFromTicket = freezed,
     Object? note = freezed,
   }) {
     return _then(_$CartItemEntityImpl(
@@ -202,6 +229,18 @@ class __$$CartItemEntityImplCopyWithImpl<$Res>
           ? _value.taxRate
           : taxRate // ignore: cast_nullable_to_non_nullable
               as double,
+      isReturn: null == isReturn
+          ? _value.isReturn
+          : isReturn // ignore: cast_nullable_to_non_nullable
+              as bool,
+      returnReason: freezed == returnReason
+          ? _value.returnReason
+          : returnReason // ignore: cast_nullable_to_non_nullable
+              as String?,
+      returnedFromTicket: freezed == returnedFromTicket
+          ? _value.returnedFromTicket
+          : returnedFromTicket // ignore: cast_nullable_to_non_nullable
+              as String?,
       note: freezed == note
           ? _value.note
           : note // ignore: cast_nullable_to_non_nullable
@@ -221,6 +260,9 @@ class _$CartItemEntityImpl extends _CartItemEntity {
       required this.unitPrice,
       required this.discount,
       required this.taxRate,
+      this.isReturn = false,
+      this.returnReason,
+      this.returnedFromTicket,
       this.note})
       : super._();
 
@@ -239,11 +281,18 @@ class _$CartItemEntityImpl extends _CartItemEntity {
   @override
   final double taxRate;
   @override
+  @JsonKey()
+  final bool isReturn;
+  @override
+  final String? returnReason;
+  @override
+  final String? returnedFromTicket;
+  @override
   final String? note;
 
   @override
   String toString() {
-    return 'CartItemEntity(id: $id, product: $product, variant: $variant, quantity: $quantity, unitPrice: $unitPrice, discount: $discount, taxRate: $taxRate, note: $note)';
+    return 'CartItemEntity(id: $id, product: $product, variant: $variant, quantity: $quantity, unitPrice: $unitPrice, discount: $discount, taxRate: $taxRate, isReturn: $isReturn, returnReason: $returnReason, returnedFromTicket: $returnedFromTicket, note: $note)';
   }
 
   @override
@@ -261,12 +310,29 @@ class _$CartItemEntityImpl extends _CartItemEntity {
             (identical(other.discount, discount) ||
                 other.discount == discount) &&
             (identical(other.taxRate, taxRate) || other.taxRate == taxRate) &&
+            (identical(other.isReturn, isReturn) ||
+                other.isReturn == isReturn) &&
+            (identical(other.returnReason, returnReason) ||
+                other.returnReason == returnReason) &&
+            (identical(other.returnedFromTicket, returnedFromTicket) ||
+                other.returnedFromTicket == returnedFromTicket) &&
             (identical(other.note, note) || other.note == note));
   }
 
   @override
-  int get hashCode => Object.hash(runtimeType, id, product, variant, quantity,
-      unitPrice, discount, taxRate, note);
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      product,
+      variant,
+      quantity,
+      unitPrice,
+      discount,
+      taxRate,
+      isReturn,
+      returnReason,
+      returnedFromTicket,
+      note);
 
   @JsonKey(ignore: true)
   @override
@@ -285,6 +351,9 @@ abstract class _CartItemEntity extends CartItemEntity {
       required final double unitPrice,
       required final double discount,
       required final double taxRate,
+      final bool isReturn,
+      final String? returnReason,
+      final String? returnedFromTicket,
       final String? note}) = _$CartItemEntityImpl;
   const _CartItemEntity._() : super._();
 
@@ -302,6 +371,12 @@ abstract class _CartItemEntity extends CartItemEntity {
   double get discount;
   @override
   double get taxRate;
+  @override
+  bool get isReturn;
+  @override
+  String? get returnReason;
+  @override
+  String? get returnedFromTicket;
   @override
   String? get note;
   @override

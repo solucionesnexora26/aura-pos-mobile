@@ -407,10 +407,14 @@ class _CartItemTile extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
+        color: item.isReturn
+            ? scheme.errorContainer.withValues(alpha: 0.45)
+            : scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: scheme.outlineVariant.withValues(alpha: 0.3),
+          color: item.isReturn
+              ? scheme.error.withValues(alpha: 0.45)
+              : scheme.outlineVariant.withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -420,17 +424,21 @@ class _CartItemTile extends ConsumerWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: scheme.primaryContainer.withValues(alpha: 0.4),
+              color: item.isReturn
+                  ? scheme.errorContainer
+                  : scheme.primaryContainer.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Center(
-              child: Text(
-                item.product.name.substring(0, 1).toUpperCase(),
-                style: text.titleMedium?.copyWith(
-                  color: scheme.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              child: item.isReturn
+                  ? Icon(Icons.undo, size: 20, color: scheme.onErrorContainer)
+                  : Text(
+                      item.product.name.substring(0, 1).toUpperCase(),
+                      style: text.titleMedium?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
             ),
           ),
           const SizedBox(width: 12),
@@ -451,6 +459,16 @@ class _CartItemTile extends ConsumerWidget {
                   '${AppFormatters.currency(item.unitPrice)} /ud',
                   style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                 ),
+                if (item.isReturn && item.returnReasonLabel != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Devolución · ${item.returnReasonLabel}',
+                    style: text.labelSmall?.copyWith(
+                      color: scheme.error,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 6),
                 // Controles de cantidad
                 Container(
@@ -468,7 +486,7 @@ class _CartItemTile extends ConsumerWidget {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         child: Text(
-                          AppFormatters.quantity(item.quantity),
+                          AppFormatters.quantity(item.displayQuantity),
                           style: text.labelLarge?.copyWith(fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -500,7 +518,7 @@ class _CartItemTile extends ConsumerWidget {
                 AppFormatters.currency(item.lineTotal),
                 style: text.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: scheme.onSurface,
+                  color: item.isReturn ? scheme.error : scheme.onSurface,
                 ),
               ),
             ],
@@ -642,6 +660,39 @@ class _CartFooter extends StatelessWidget {
             value: AppFormatters.currency(cart.subtotal),
             icon: Icons.receipt_outlined,
           ),
+          // Devoluciones
+          if (cart.hasReturns) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: scheme.errorContainer.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.undo, size: 14),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Devoluciones (${cart.returnItems.length} línea${cart.returnItems.length == 1 ? '' : 's'})',
+                      style: text.bodySmall?.copyWith(
+                        color: scheme.onErrorContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '−${AppFormatters.currency(cart.returnsTotal.abs())}',
+                    style: text.bodySmall?.copyWith(
+                      color: scheme.onErrorContainer,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           // Descuento
           if (cart.discountTotal > 0)
             _SummaryRow(

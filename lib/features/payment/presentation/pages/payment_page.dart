@@ -53,6 +53,8 @@ class PaymentPage extends HookConsumerWidget {
     final remaining = cart.total - totalPaid;
     final cashAmount = double.tryParse(cashAmountCtrl.text.replaceAll(',', '.')) ?? 0;
     final change = selectedMethod.value == PaymentMethod.cash ? cashAmount - remaining : 0.0;
+    // Total cero o negativo: la venta queda a favor del cliente, no se cobra.
+    final noPayment = cart.total <= 0;
 
     // Validación específica de la venta a crédito (método "Crédito").
     final isCredit = selectedMethod.value == PaymentMethod.credit;
@@ -62,7 +64,8 @@ class PaymentPage extends HookConsumerWidget {
       isProcessing.value = true;
       error.value = null;
 
-      // Bloquear la venta a crédito si no hay cliente o supera el cupo.
+      // Bloquear la venta a crédito si no hay cliente, supera el cupo o el
+      // total no es positivo.
       final String? invalidCredit = _creditValidationError(
         isCredit,
         cart.customer,
@@ -74,15 +77,30 @@ class PaymentPage extends HookConsumerWidget {
         return;
       }
 
-      final allPayments = isMixed.value
-          ? payments.value
-          : [
+      // Devoluciones que dejan el total en cero o negativo no generan ingresos:
+      // se registra un pago simbólico de $0 y el cajero entrega el saldo a
+      // favor al cliente desde la caja.
+      final allPayments = noPayment
+          ? [
               (
-                method: selectedMethod.value,
-                amount: selectedMethod.value == PaymentMethod.cash ? cashAmount : remaining,
-                reference: referenceCtrl.text.trim().isEmpty ? null : referenceCtrl.text.trim(),
+                method: PaymentMethod.cash,
+                amount: 0.0,
+                reference: 'Total a favor del cliente',
               )
-            ];
+            ]
+          : (isMixed.value
+              ? payments.value
+              : [
+                  (
+                    method: selectedMethod.value,
+                    amount: selectedMethod.value == PaymentMethod.cash
+                        ? cashAmount
+                        : remaining,
+                    reference: referenceCtrl.text.trim().isEmpty
+                        ? null
+                        : referenceCtrl.text.trim(),
+                  )
+                ]);
 
       final session = ref.read(authSessionProvider);
       final saleRepo = ref.read(saleRepositoryProvider);
@@ -122,7 +140,7 @@ class PaymentPage extends HookConsumerWidget {
         saleId: saleId,
         cart: cart,
         payments: allPayments,
-        changeGiven: change > 0 ? change : 0,
+        changeGiven: noPayment ? 0 : (change > 0 ? change : 0),
         userId: userId,
       );
 
@@ -230,87 +248,165 @@ class PaymentPage extends HookConsumerWidget {
                         Expanded(child: Text('Impuestos', style: text.bodyMedium)),
                         Text(AppFormatters.currency(cart.taxTotal), style: text.bodyMedium),
                       ]),
+                    if (cart.hasReturns) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: scheme.errorContainer.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(children: [
+                          const Icon(Icons.undo, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Devoluciones',
+                              style: text.bodyMedium?.copyWith(
+                                color: scheme.onErrorContainer,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '−${AppFormatters.currency(cart.returnsTotal.abs())}',
+                            style: text.bodyMedium?.copyWith(
+                              color: scheme.onErrorContainer,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ],
                     const Divider(height: 16),
                     Row(children: [
                       Expanded(child: Text('Total', style: text.titleLarge)),
-                      Text(AppFormatters.currency(cart.total),
-                          style: text.titleLarge?.copyWith(color: scheme.primary)),
+                      Text(AppFormatters.currency(cart.total.abs()),
+                          style: text.titleLarge?.copyWith(
+                              color: cart.total < 0
+                                  ? scheme.error
+                                  : scheme.primary)),
                     ]),
+                    if (cart.total < 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: scheme.errorContainer,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            'Total A FAVOR del cliente: '
+                            '${AppFormatters.currency(cart.total.abs())}. '
+                            'Entregue este valor al cliente desde la caja.',
+                            style: text.bodyMedium?.copyWith(
+                              color: scheme.onErrorContainer,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-
-            // Método de pago
-            Text('Método de pago', style: text.titleSmall?.copyWith(color: scheme.primary)),
-            const Divider(height: 8),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: paymentMethods.map((pm) {
-                final m = pm.paymentMethod;
-                final label = pm.label;
-                final icon = pm.iconData;
-                return ChoiceChip(
-                  label: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(icon, size: 16),
-                    const SizedBox(width: 6),
-                    Text(label),
-                  ]),
-                  selected: selectedMethod.value == m && !isMixed.value,
-                  onSelected: (_) {
-                    selectedMethod.value = m;
-                    isMixed.value = false;
-                  },
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 16),
-
-            // Campo de monto
-            if (selectedMethod.value == PaymentMethod.cash) ...[
-              TextField(
-                controller: cashAmountCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Monto recibido',
-                  prefixIcon: const Icon(Icons.attach_money),
-                  suffix: change > 0
-                      ? Text('Cambio: ${AppFormatters.currency(change)}',
-                          style: TextStyle(color: scheme.primary, fontWeight: FontWeight.bold))
-                      : null,
-                ),
-              ),
-            ] else if (selectedMethod.value == PaymentMethod.credit) ...[
+            if (noPayment) ...[
+              const SizedBox(height: 24),
               Card(
-                color: scheme.primaryContainer,
+                color: scheme.tertiaryContainer,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Row(children: [
-                    Icon(Icons.account_balance_wallet_outlined,
-                        color: scheme.onPrimaryContainer, size: 20),
+                    Icon(Icons.currency_exchange,
+                        color: scheme.onTertiaryContainer, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        cart.customer == null
-                            ? 'Requiere seleccionar un cliente.'
-                            : 'Se cobrará a crédito a ${cart.customer!.fullName}.',
-                        style: TextStyle(color: scheme.onPrimaryContainer),
+                        cart.total < 0
+                            ? 'Esta venta entrega ${AppFormatters.currency(cart.total.abs())} al cliente. No se cobra ningún método de pago.'
+                            : 'Venta neta en cero. No se cobra ningún método de pago.',
+                        style: TextStyle(color: scheme.onTertiaryContainer),
                       ),
                     ),
                   ]),
                 ),
               ),
             ] else ...[
-              TextField(
-                controller: referenceCtrl,
-                decoration: InputDecoration(
-                  labelText: _refLabel(selectedMethod.value),
-                  prefixIcon: const Icon(Icons.confirmation_number_outlined),
-                ),
+              const SizedBox(height: 24),
+
+              // Método de pago
+              Text('Método de pago', style: text.titleSmall?.copyWith(color: scheme.primary)),
+              const Divider(height: 8),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: paymentMethods.map((pm) {
+                  final m = pm.paymentMethod;
+                  final label = pm.label;
+                  final icon = pm.iconData;
+                  return ChoiceChip(
+                    label: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(icon, size: 16),
+                      const SizedBox(width: 6),
+                      Text(label),
+                    ]),
+                    selected: selectedMethod.value == m && !isMixed.value,
+                    onSelected: (_) {
+                      selectedMethod.value = m;
+                      isMixed.value = false;
+                    },
+                  );
+                }).toList(),
               ),
+              const SizedBox(height: 16),
+
+              // Campo de monto
+              if (selectedMethod.value == PaymentMethod.cash) ...[
+                TextField(
+                  controller: cashAmountCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Monto recibido',
+                    prefixIcon: const Icon(Icons.attach_money),
+                    suffix: change > 0
+                        ? Text('Cambio: ${AppFormatters.currency(change)}',
+                            style: TextStyle(color: scheme.primary, fontWeight: FontWeight.bold))
+                        : null,
+                  ),
+                ),
+              ] else if (selectedMethod.value == PaymentMethod.credit) ...[
+                Card(
+                  color: scheme.primaryContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(children: [
+                      Icon(Icons.account_balance_wallet_outlined,
+                          color: scheme.onPrimaryContainer, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          cart.customer == null
+                              ? 'Requiere seleccionar un cliente.'
+                              : 'Se cobrará a crédito a ${cart.customer!.fullName}.',
+                          style: TextStyle(color: scheme.onPrimaryContainer),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ] else ...[
+                TextField(
+                  controller: referenceCtrl,
+                  decoration: InputDecoration(
+                    labelText: _refLabel(selectedMethod.value),
+                    prefixIcon: const Icon(Icons.confirmation_number_outlined),
+                  ),
+                ),
+              ],
             ],
 
             if (error.value != null || creditError != null)
@@ -341,7 +437,11 @@ class PaymentPage extends HookConsumerWidget {
                         dimension: 20,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.check_circle_outline),
-                label: Text('Confirmar pago ${AppFormatters.currency(cart.total)}'),
+                label: Text(
+                  cart.total <= 0
+                      ? 'Confirmar (total a favor del cliente)'
+                      : 'Confirmar pago ${AppFormatters.currency(cart.total)}',
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -377,6 +477,7 @@ class PaymentPage extends HookConsumerWidget {
   String? _creditValidationError(
       bool isCredit, CustomerEntity? customer, double total) {
     if (!isCredit) return null;
+    if (total <= 0) return 'No se puede cobrar a crédito una venta con total menor o igual a cero.';
     if (customer == null) return 'Selecciona un cliente para la venta a crédito.';
     if (customer.creditLimit > 0 && customer.availableCredit < total) {
       return 'Cupo insuficiente. Disponible para crédito: '

@@ -84,7 +84,10 @@ class _AuraPosAppState extends ConsumerState<AuraPosApp>
     if (!hasConnection) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(syncControllerProvider.notifier).push();
+      // Reconciliación completa (push + pull) en background al recuperar red:
+      // sube operaciones pendientes y descarga cambios hechos desde la web.
+      // ignore: discarded_futures
+      ref.read(syncControllerProvider.notifier).reconcileInBackground();
     });
   }
 

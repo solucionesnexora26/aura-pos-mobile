@@ -143,6 +143,9 @@ class SyncSerializers {
         'tax_rate': row.taxRate,
         'line_total': row.lineTotal,
         'note': row.note,
+        'is_return': row.isReturn,
+        'return_reason': _opt(row.returnReason),
+        'returned_from_ticket': _opt(row.returnedFromTicket),
       };
 
   static Map<String, dynamic> payment(PaymentRow row) => {

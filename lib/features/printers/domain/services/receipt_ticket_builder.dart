@@ -4,6 +4,7 @@ import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:image/image.dart' as img;
 import 'package:dio/dio.dart';
 
+import '../../../../core/database/app_database.dart';
 import '../../../../core/database/tables/sales_tables.dart';
 import '../../../../core/database/tables/system_tables.dart';
 import '../../../../core/utils/formatters.dart';
@@ -54,6 +55,10 @@ abstract class ReceiptTicketBuilder {
 
     var bytes = <int>[];
     bytes += gen.reset();
+
+    final saleItems = sale.items.where((i) => !i.isReturn).toList();
+    final returnItems = sale.items.where((i) => i.isReturn).toList();
+    final hasReturns = returnItems.isNotEmpty;
 
     if (receiptConfig == null) {
       // ignore: avoid_print
@@ -130,8 +135,14 @@ abstract class ReceiptTicketBuilder {
       }
     }
 
-    bytes += gen.text(_s('RECIBO DE VENTA'),
-        styles: const PosStyles(align: PosAlign.center, bold: true));
+    bytes += gen.text(
+      _s('RECIBO DE VENTA'),
+      styles: const PosStyles(align: PosAlign.center, bold: true),
+    );
+    if (hasReturns) {
+      bytes += gen.text(_s('CON DEVOLUCION'),
+          styles: const PosStyles(align: PosAlign.center, bold: true));
+    }
 
     final header = receiptConfig?.header?.trim().isNotEmpty ?? false
         ? receiptConfig!.header
@@ -166,23 +177,38 @@ abstract class ReceiptTicketBuilder {
     bytes += gen.hr();
 
     // ── Ítems ────────────────────────────────────────────────────────────────
-    for (final item in sale.items) {
-      final left =
-          _s('${AppFormatters.quantity(item.quantity)} x ${item.productNameSnapshot}');
-      bytes += gen.row([
-        PosColumn(text: left, width: 8),
-        PosColumn(
-          text: AppFormatters.currency(item.lineTotal),
-          width: 4,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-      ]);
+    if (returnItems.isEmpty) {
+      for (final item in sale.items) {
+        bytes += _itemRow(gen, item);
+      }
+    } else {
+      bytes += gen.text(_s('VENTA'),
+          styles: const PosStyles(bold: true));
+      for (final item in saleItems) {
+        bytes += _itemRow(gen, item);
+      }
+      bytes += gen.text(_s('DEVOLUCION'),
+          styles: const PosStyles(bold: true));
+      for (final item in returnItems) {
+        bytes += _itemRow(gen, item);
+        final reason = item.returnReasonLabel;
+        if (reason != null && reason.isNotEmpty) {
+          bytes += gen.text(_s('  Motivo: $reason'),
+              styles: const PosStyles(bold: false));
+        }
+      }
     }
 
     bytes += gen.hr();
 
     // ── Totales ──────────────────────────────────────────────────────────────
     bytes += _amountRow(gen, 'Subtotal', AppFormatters.currency(sale.subtotal));
+    if (returnItems.isNotEmpty) {
+      final returnsAbs =
+          returnItems.fold<double>(0.0, (s, i) => s + i.lineTotal).abs();
+      bytes += _amountRow(
+          gen, 'Devoluciones', '-${AppFormatters.currency(returnsAbs)}');
+    }
     if (sale.discountTotal > 0) {
       bytes += _amountRow(
           gen, 'Descuento', '-${AppFormatters.currency(sale.discountTotal)}');
@@ -190,13 +216,15 @@ abstract class ReceiptTicketBuilder {
     if (sale.taxTotal > 0) {
       bytes += _amountRow(gen, 'Impuestos', AppFormatters.currency(sale.taxTotal));
     }
+    final hasNegativeTotal = sale.total < 0;
     bytes += gen.row([
       PosColumn(
-          text: 'TOTAL',
+          text: hasNegativeTotal ? 'A FAVOR DEL CLIENTE' : 'TOTAL',
           width: 8,
           styles: const PosStyles(bold: true)),
       PosColumn(
-        text: AppFormatters.currency(sale.total),
+        text: AppFormatters.currency(
+            hasNegativeTotal ? sale.total.abs() : sale.total),
         width: 4,
         styles: const PosStyles(align: PosAlign.right, bold: true),
       ),
@@ -240,7 +268,20 @@ abstract class ReceiptTicketBuilder {
     return bytes;
   }
 
-  static List<int> _amountRow(Generator gen, String label, String value) {
+  static List<int> _itemRow(Generator gen, SaleItemRow item) {
+  final left = _s(
+      '${AppFormatters.quantity(item.quantity.abs())} x ${item.productNameSnapshot}');
+  return gen.row([
+    PosColumn(text: left, width: 8),
+    PosColumn(
+      text: AppFormatters.currency(item.lineTotal),
+      width: 4,
+      styles: const PosStyles(align: PosAlign.right),
+    ),
+  ]);
+}
+
+static List<int> _amountRow(Generator gen, String label, String value) {
     return gen.row([
       PosColumn(text: label, width: 8),
       PosColumn(
@@ -273,9 +314,12 @@ abstract class ReceiptTicketBuilder {
   /// Versión en texto plano del recibo (útil para compartir).
   static String buildPlainText(SaleEntity sale, {ReceiptConfigEntity? receiptConfig, String? customerName}) {
     final businessName = receiptConfig?.businessName?.trim();
+    final saleItems = sale.items.where((i) => !i.isReturn).toList();
+    final returnItems = sale.items.where((i) => i.isReturn).toList();
+    final hasReturns = returnItems.isNotEmpty;
     final b = StringBuffer()
       ..writeln(businessName != null && businessName.isNotEmpty ? businessName : 'AURA POS')
-      ..writeln('RECIBO DE VENTA')
+      ..writeln('RECIBO DE VENTA' + (hasReturns ? ' (CON DEVOLUCION)' : ''))
       ..writeln('------------------------')
       ..writeln('Ticket: ${sale.ticketNumber}')
       ..writeln('Fecha: ${AppFormatters.dateTime(sale.paidAt ?? sale.createdAt)}');
@@ -291,19 +335,45 @@ abstract class ReceiptTicketBuilder {
       b.writeln('Cliente: ${sale.customerId}');
     }
     b.writeln();
-    for (final item in sale.items) {
-      b.writeln('${AppFormatters.quantity(item.quantity)} x ${item.productNameSnapshot}');
-      b.writeln('      ${AppFormatters.currency(item.lineTotal)}');
+    if (hasReturns) {
+      b.writeln('VENTA');
+      for (final item in saleItems) {
+        b.writeln('${AppFormatters.quantity(item.quantity)} x ${item.productNameSnapshot}');
+        b.writeln('      ${AppFormatters.currency(item.lineTotal)}');
+      }
+      b.writeln('DEVOLUCION');
+      for (final item in returnItems) {
+        b.writeln('${AppFormatters.quantity(item.quantity.abs())} x ${item.productNameSnapshot}');
+        b.writeln('      ${AppFormatters.currency(item.lineTotal)}');
+        final reason = item.returnReasonLabel;
+        if (reason != null && reason.isNotEmpty) {
+          b.writeln('      Motivo: $reason');
+        }
+      }
+    } else {
+      for (final item in sale.items) {
+        b.writeln('${AppFormatters.quantity(item.quantity)} x ${item.productNameSnapshot}');
+        b.writeln('      ${AppFormatters.currency(item.lineTotal)}');
+      }
     }
     b.writeln('------------------------');
     b.writeln('Subtotal: ${AppFormatters.currency(sale.subtotal)}');
+    if (hasReturns) {
+      final returnsAbs =
+          returnItems.fold<double>(0.0, (s, i) => s + i.lineTotal).abs();
+      b.writeln('Devoluciones: -${AppFormatters.currency(returnsAbs)}');
+    }
     if (sale.discountTotal > 0) {
       b.writeln('Descuento: -${AppFormatters.currency(sale.discountTotal)}');
     }
     if (sale.taxTotal > 0) {
       b.writeln('Impuestos: ${AppFormatters.currency(sale.taxTotal)}');
     }
-    b.writeln('TOTAL: ${AppFormatters.currency(sale.total)}');
+    if (sale.total < 0) {
+      b.writeln('A FAVOR DEL CLIENTE: ${AppFormatters.currency(sale.total.abs())}');
+    } else {
+      b.writeln('TOTAL: ${AppFormatters.currency(sale.total)}');
+    }
     if (sale.changeGiven > 0) {
       b.writeln('Cambio: ${AppFormatters.currency(sale.changeGiven)}');
     }
@@ -327,4 +397,15 @@ abstract class ReceiptTicketBuilder {
       ..writeln(receiptConfig?.thankYou ?? '¡Gracias por su compra!');
     return b.toString();
   }
+}
+
+/// Etiqueta legible de un motivo de devolución de una línea de recibo.
+extension SaleItemReturnReasonLabel on SaleItemRow {
+  String? get returnReasonLabel => switch (returnReason) {
+        'deterioro' => 'Deterioro',
+        'vencimiento' => 'Vencimiento',
+        'no_aceptacion' => 'No aceptacion',
+        'otro' => 'Otro',
+        _ => returnReason,
+      };
 }

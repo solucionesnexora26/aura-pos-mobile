@@ -4541,6 +4541,28 @@ class $SaleItemsTable extends SaleItems
   late final GeneratedColumn<String> note = GeneratedColumn<String>(
       'note', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _isReturnMeta =
+      const VerificationMeta('isReturn');
+  @override
+  late final GeneratedColumn<bool> isReturn = GeneratedColumn<bool>(
+      'is_return', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_return" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _returnReasonMeta =
+      const VerificationMeta('returnReason');
+  @override
+  late final GeneratedColumn<String> returnReason = GeneratedColumn<String>(
+      'return_reason', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _returnedFromTicketMeta =
+      const VerificationMeta('returnedFromTicket');
+  @override
+  late final GeneratedColumn<String> returnedFromTicket =
+      GeneratedColumn<String>('returned_from_ticket', aliasedName, true,
+          type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -4553,7 +4575,10 @@ class $SaleItemsTable extends SaleItems
         discount,
         taxRate,
         lineTotal,
-        note
+        note,
+        isReturn,
+        returnReason,
+        returnedFromTicket
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4622,6 +4647,22 @@ class $SaleItemsTable extends SaleItems
       context.handle(
           _noteMeta, note.isAcceptableOrUnknown(data['note']!, _noteMeta));
     }
+    if (data.containsKey('is_return')) {
+      context.handle(_isReturnMeta,
+          isReturn.isAcceptableOrUnknown(data['is_return']!, _isReturnMeta));
+    }
+    if (data.containsKey('return_reason')) {
+      context.handle(
+          _returnReasonMeta,
+          returnReason.isAcceptableOrUnknown(
+              data['return_reason']!, _returnReasonMeta));
+    }
+    if (data.containsKey('returned_from_ticket')) {
+      context.handle(
+          _returnedFromTicketMeta,
+          returnedFromTicket.isAcceptableOrUnknown(
+              data['returned_from_ticket']!, _returnedFromTicketMeta));
+    }
     return context;
   }
 
@@ -4654,6 +4695,12 @@ class $SaleItemsTable extends SaleItems
           .read(DriftSqlType.double, data['${effectivePrefix}line_total'])!,
       note: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}note']),
+      isReturn: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_return'])!,
+      returnReason: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}return_reason']),
+      returnedFromTicket: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}returned_from_ticket']),
     );
   }
 
@@ -4675,6 +4722,9 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
   final double taxRate;
   final double lineTotal;
   final String? note;
+  final bool isReturn;
+  final String? returnReason;
+  final String? returnedFromTicket;
   const SaleItemRow(
       {required this.id,
       required this.saleId,
@@ -4686,7 +4736,10 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
       required this.discount,
       required this.taxRate,
       required this.lineTotal,
-      this.note});
+      this.note,
+      required this.isReturn,
+      this.returnReason,
+      this.returnedFromTicket});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -4704,6 +4757,13 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
     map['line_total'] = Variable<double>(lineTotal);
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
+    }
+    map['is_return'] = Variable<bool>(isReturn);
+    if (!nullToAbsent || returnReason != null) {
+      map['return_reason'] = Variable<String>(returnReason);
+    }
+    if (!nullToAbsent || returnedFromTicket != null) {
+      map['returned_from_ticket'] = Variable<String>(returnedFromTicket);
     }
     return map;
   }
@@ -4723,6 +4783,13 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
       taxRate: Value(taxRate),
       lineTotal: Value(lineTotal),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      isReturn: Value(isReturn),
+      returnReason: returnReason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(returnReason),
+      returnedFromTicket: returnedFromTicket == null && nullToAbsent
+          ? const Value.absent()
+          : Value(returnedFromTicket),
     );
   }
 
@@ -4742,6 +4809,10 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
       taxRate: serializer.fromJson<double>(json['taxRate']),
       lineTotal: serializer.fromJson<double>(json['lineTotal']),
       note: serializer.fromJson<String?>(json['note']),
+      isReturn: serializer.fromJson<bool>(json['isReturn']),
+      returnReason: serializer.fromJson<String?>(json['returnReason']),
+      returnedFromTicket:
+          serializer.fromJson<String?>(json['returnedFromTicket']),
     );
   }
   @override
@@ -4759,6 +4830,9 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
       'taxRate': serializer.toJson<double>(taxRate),
       'lineTotal': serializer.toJson<double>(lineTotal),
       'note': serializer.toJson<String?>(note),
+      'isReturn': serializer.toJson<bool>(isReturn),
+      'returnReason': serializer.toJson<String?>(returnReason),
+      'returnedFromTicket': serializer.toJson<String?>(returnedFromTicket),
     };
   }
 
@@ -4773,7 +4847,10 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
           double? discount,
           double? taxRate,
           double? lineTotal,
-          Value<String?> note = const Value.absent()}) =>
+          Value<String?> note = const Value.absent(),
+          bool? isReturn,
+          Value<String?> returnReason = const Value.absent(),
+          Value<String?> returnedFromTicket = const Value.absent()}) =>
       SaleItemRow(
         id: id ?? this.id,
         saleId: saleId ?? this.saleId,
@@ -4786,6 +4863,12 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
         taxRate: taxRate ?? this.taxRate,
         lineTotal: lineTotal ?? this.lineTotal,
         note: note.present ? note.value : this.note,
+        isReturn: isReturn ?? this.isReturn,
+        returnReason:
+            returnReason.present ? returnReason.value : this.returnReason,
+        returnedFromTicket: returnedFromTicket.present
+            ? returnedFromTicket.value
+            : this.returnedFromTicket,
       );
   SaleItemRow copyWithCompanion(SaleItemsCompanion data) {
     return SaleItemRow(
@@ -4802,6 +4885,13 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
       taxRate: data.taxRate.present ? data.taxRate.value : this.taxRate,
       lineTotal: data.lineTotal.present ? data.lineTotal.value : this.lineTotal,
       note: data.note.present ? data.note.value : this.note,
+      isReturn: data.isReturn.present ? data.isReturn.value : this.isReturn,
+      returnReason: data.returnReason.present
+          ? data.returnReason.value
+          : this.returnReason,
+      returnedFromTicket: data.returnedFromTicket.present
+          ? data.returnedFromTicket.value
+          : this.returnedFromTicket,
     );
   }
 
@@ -4818,7 +4908,10 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
           ..write('discount: $discount, ')
           ..write('taxRate: $taxRate, ')
           ..write('lineTotal: $lineTotal, ')
-          ..write('note: $note')
+          ..write('note: $note, ')
+          ..write('isReturn: $isReturn, ')
+          ..write('returnReason: $returnReason, ')
+          ..write('returnedFromTicket: $returnedFromTicket')
           ..write(')'))
         .toString();
   }
@@ -4835,7 +4928,10 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
       discount,
       taxRate,
       lineTotal,
-      note);
+      note,
+      isReturn,
+      returnReason,
+      returnedFromTicket);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -4850,7 +4946,10 @@ class SaleItemRow extends DataClass implements Insertable<SaleItemRow> {
           other.discount == this.discount &&
           other.taxRate == this.taxRate &&
           other.lineTotal == this.lineTotal &&
-          other.note == this.note);
+          other.note == this.note &&
+          other.isReturn == this.isReturn &&
+          other.returnReason == this.returnReason &&
+          other.returnedFromTicket == this.returnedFromTicket);
 }
 
 class SaleItemsCompanion extends UpdateCompanion<SaleItemRow> {
@@ -4865,6 +4964,9 @@ class SaleItemsCompanion extends UpdateCompanion<SaleItemRow> {
   final Value<double> taxRate;
   final Value<double> lineTotal;
   final Value<String?> note;
+  final Value<bool> isReturn;
+  final Value<String?> returnReason;
+  final Value<String?> returnedFromTicket;
   final Value<int> rowid;
   const SaleItemsCompanion({
     this.id = const Value.absent(),
@@ -4878,6 +4980,9 @@ class SaleItemsCompanion extends UpdateCompanion<SaleItemRow> {
     this.taxRate = const Value.absent(),
     this.lineTotal = const Value.absent(),
     this.note = const Value.absent(),
+    this.isReturn = const Value.absent(),
+    this.returnReason = const Value.absent(),
+    this.returnedFromTicket = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SaleItemsCompanion.insert({
@@ -4892,6 +4997,9 @@ class SaleItemsCompanion extends UpdateCompanion<SaleItemRow> {
     this.taxRate = const Value.absent(),
     required double lineTotal,
     this.note = const Value.absent(),
+    this.isReturn = const Value.absent(),
+    this.returnReason = const Value.absent(),
+    this.returnedFromTicket = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : saleId = Value(saleId),
         productId = Value(productId),
@@ -4911,6 +5019,9 @@ class SaleItemsCompanion extends UpdateCompanion<SaleItemRow> {
     Expression<double>? taxRate,
     Expression<double>? lineTotal,
     Expression<String>? note,
+    Expression<bool>? isReturn,
+    Expression<String>? returnReason,
+    Expression<String>? returnedFromTicket,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4926,6 +5037,10 @@ class SaleItemsCompanion extends UpdateCompanion<SaleItemRow> {
       if (taxRate != null) 'tax_rate': taxRate,
       if (lineTotal != null) 'line_total': lineTotal,
       if (note != null) 'note': note,
+      if (isReturn != null) 'is_return': isReturn,
+      if (returnReason != null) 'return_reason': returnReason,
+      if (returnedFromTicket != null)
+        'returned_from_ticket': returnedFromTicket,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4942,6 +5057,9 @@ class SaleItemsCompanion extends UpdateCompanion<SaleItemRow> {
       Value<double>? taxRate,
       Value<double>? lineTotal,
       Value<String?>? note,
+      Value<bool>? isReturn,
+      Value<String?>? returnReason,
+      Value<String?>? returnedFromTicket,
       Value<int>? rowid}) {
     return SaleItemsCompanion(
       id: id ?? this.id,
@@ -4955,6 +5073,9 @@ class SaleItemsCompanion extends UpdateCompanion<SaleItemRow> {
       taxRate: taxRate ?? this.taxRate,
       lineTotal: lineTotal ?? this.lineTotal,
       note: note ?? this.note,
+      isReturn: isReturn ?? this.isReturn,
+      returnReason: returnReason ?? this.returnReason,
+      returnedFromTicket: returnedFromTicket ?? this.returnedFromTicket,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4996,6 +5117,15 @@ class SaleItemsCompanion extends UpdateCompanion<SaleItemRow> {
     if (note.present) {
       map['note'] = Variable<String>(note.value);
     }
+    if (isReturn.present) {
+      map['is_return'] = Variable<bool>(isReturn.value);
+    }
+    if (returnReason.present) {
+      map['return_reason'] = Variable<String>(returnReason.value);
+    }
+    if (returnedFromTicket.present) {
+      map['returned_from_ticket'] = Variable<String>(returnedFromTicket.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -5016,6 +5146,9 @@ class SaleItemsCompanion extends UpdateCompanion<SaleItemRow> {
           ..write('taxRate: $taxRate, ')
           ..write('lineTotal: $lineTotal, ')
           ..write('note: $note, ')
+          ..write('isReturn: $isReturn, ')
+          ..write('returnReason: $returnReason, ')
+          ..write('returnedFromTicket: $returnedFromTicket, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -12136,6 +12269,9 @@ typedef $$SaleItemsTableCreateCompanionBuilder = SaleItemsCompanion Function({
   Value<double> taxRate,
   required double lineTotal,
   Value<String?> note,
+  Value<bool> isReturn,
+  Value<String?> returnReason,
+  Value<String?> returnedFromTicket,
   Value<int> rowid,
 });
 typedef $$SaleItemsTableUpdateCompanionBuilder = SaleItemsCompanion Function({
@@ -12150,6 +12286,9 @@ typedef $$SaleItemsTableUpdateCompanionBuilder = SaleItemsCompanion Function({
   Value<double> taxRate,
   Value<double> lineTotal,
   Value<String?> note,
+  Value<bool> isReturn,
+  Value<String?> returnReason,
+  Value<String?> returnedFromTicket,
   Value<int> rowid,
 });
 
@@ -12181,6 +12320,9 @@ class $$SaleItemsTableTableManager extends RootTableManager<
             Value<double> taxRate = const Value.absent(),
             Value<double> lineTotal = const Value.absent(),
             Value<String?> note = const Value.absent(),
+            Value<bool> isReturn = const Value.absent(),
+            Value<String?> returnReason = const Value.absent(),
+            Value<String?> returnedFromTicket = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               SaleItemsCompanion(
@@ -12195,6 +12337,9 @@ class $$SaleItemsTableTableManager extends RootTableManager<
             taxRate: taxRate,
             lineTotal: lineTotal,
             note: note,
+            isReturn: isReturn,
+            returnReason: returnReason,
+            returnedFromTicket: returnedFromTicket,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -12209,6 +12354,9 @@ class $$SaleItemsTableTableManager extends RootTableManager<
             Value<double> taxRate = const Value.absent(),
             required double lineTotal,
             Value<String?> note = const Value.absent(),
+            Value<bool> isReturn = const Value.absent(),
+            Value<String?> returnReason = const Value.absent(),
+            Value<String?> returnedFromTicket = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               SaleItemsCompanion.insert(
@@ -12223,6 +12371,9 @@ class $$SaleItemsTableTableManager extends RootTableManager<
             taxRate: taxRate,
             lineTotal: lineTotal,
             note: note,
+            isReturn: isReturn,
+            returnReason: returnReason,
+            returnedFromTicket: returnedFromTicket,
             rowid: rowid,
           ),
         ));
@@ -12268,6 +12419,21 @@ class $$SaleItemsTableFilterComposer
 
   ColumnFilters<String> get note => $state.composableBuilder(
       column: $state.table.note,
+      builder: (column, joinBuilders) =>
+          ColumnFilters(column, joinBuilders: joinBuilders));
+
+  ColumnFilters<bool> get isReturn => $state.composableBuilder(
+      column: $state.table.isReturn,
+      builder: (column, joinBuilders) =>
+          ColumnFilters(column, joinBuilders: joinBuilders));
+
+  ColumnFilters<String> get returnReason => $state.composableBuilder(
+      column: $state.table.returnReason,
+      builder: (column, joinBuilders) =>
+          ColumnFilters(column, joinBuilders: joinBuilders));
+
+  ColumnFilters<String> get returnedFromTicket => $state.composableBuilder(
+      column: $state.table.returnedFromTicket,
       builder: (column, joinBuilders) =>
           ColumnFilters(column, joinBuilders: joinBuilders));
 
@@ -12349,6 +12515,21 @@ class $$SaleItemsTableOrderingComposer
 
   ColumnOrderings<String> get note => $state.composableBuilder(
       column: $state.table.note,
+      builder: (column, joinBuilders) =>
+          ColumnOrderings(column, joinBuilders: joinBuilders));
+
+  ColumnOrderings<bool> get isReturn => $state.composableBuilder(
+      column: $state.table.isReturn,
+      builder: (column, joinBuilders) =>
+          ColumnOrderings(column, joinBuilders: joinBuilders));
+
+  ColumnOrderings<String> get returnReason => $state.composableBuilder(
+      column: $state.table.returnReason,
+      builder: (column, joinBuilders) =>
+          ColumnOrderings(column, joinBuilders: joinBuilders));
+
+  ColumnOrderings<String> get returnedFromTicket => $state.composableBuilder(
+      column: $state.table.returnedFromTicket,
       builder: (column, joinBuilders) =>
           ColumnOrderings(column, joinBuilders: joinBuilders));
 

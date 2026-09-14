@@ -356,6 +356,9 @@ class SaleRepositoryImpl implements SaleRepository {
         taxRate: Value(item.taxRate),
         lineTotal: item.lineTotal,
         note: Value(item.note),
+        isReturn: Value(item.isReturn),
+        returnReason: Value(item.returnReason),
+        returnedFromTicket: Value(item.returnedFromTicket),
       ));
     }
   }

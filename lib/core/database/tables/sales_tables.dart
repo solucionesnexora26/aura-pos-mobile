@@ -56,11 +56,16 @@ class SaleItems extends Table {
   TextColumn get variantId => text().nullable().references(ProductVariants, #id)();
   TextColumn get productNameSnapshot => text()(); // se conserva el nombre aunque el producto cambie luego
   RealColumn get unitPrice => real()();
-  RealColumn get quantity => real()();
+  RealColumn get quantity => real()(); // negativo para líneas de devolución
   RealColumn get discount => real().withDefault(const Constant(0))();
   RealColumn get taxRate => real().withDefault(const Constant(0))();
-  RealColumn get lineTotal => real()();
+  RealColumn get lineTotal => real()(); // firmado: negativo en devoluciones
   TextColumn get note => text().nullable()();
+  // Devolución: marca la línea como devolución y guarda el motivo y el ticket
+  // original (opcional) del que se devuelve.
+  BoolColumn get isReturn => boolean().withDefault(const Constant(false))();
+  TextColumn get returnReason => text().nullable()(); // deterioro | vencimiento | no_aceptacion | otro
+  TextColumn get returnedFromTicket => text().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {id};

@@ -55,7 +55,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration {
@@ -127,6 +127,18 @@ class AppDatabase extends _$AppDatabase {
         if (from < 8) {
           try {
             await m.addColumn(receiptConfigs, receiptConfigs.logoPrintUrl);
+          } catch (_) {}
+        }
+        if (from < 9) {
+          // Devoluciones: líneas negativas con motivo y ticket de origen.
+          try {
+            await m.addColumn(saleItems, saleItems.isReturn);
+          } catch (_) {}
+          try {
+            await m.addColumn(saleItems, saleItems.returnReason);
+          } catch (_) {}
+          try {
+            await m.addColumn(saleItems, saleItems.returnedFromTicket);
           } catch (_) {}
         }
       },
