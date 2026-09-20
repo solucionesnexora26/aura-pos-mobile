@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../../core/router/route_names.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../../../core/update/update_dialog.dart';
 import '../../../../core/widgets/app_drawer.dart';
 import '../providers/settings_providers.dart';
 
@@ -159,7 +161,27 @@ class SettingsPage extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.info_outline),
                   title: const Text('Versión'),
-                  trailing: Text('0.1.0', style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                  trailing: FutureBuilder<PackageInfo>(
+                    future: PackageInfo.fromPlatform(),
+                    builder: (_, snap) {
+                      final v = snap.data?.version ?? '...';
+                      final build = snap.data?.buildNumber ?? '';
+                      return Text(
+                        '$v+$build',
+                        style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                      );
+                    },
+                  ),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading: const Icon(Icons.system_update),
+                  title: const Text('Buscar actualizaciones'),
+                  subtitle: const Text('Verificar si hay una nueva versión'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    await UpdateDialog.showIfNeeded(context);
+                  },
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(

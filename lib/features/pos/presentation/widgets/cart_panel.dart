@@ -497,6 +497,40 @@ class _CartItemTile extends ConsumerWidget {
                     ],
                   ),
                 ),
+                // Descuento por línea
+                if (!item.isReturn) ...[
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () => _showDiscountDialog(context, ref, item),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: item.discount > 0
+                            ? scheme.primaryContainer.withValues(alpha: 0.5)
+                            : scheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.local_offer_outlined,
+                            size: 12,
+                            color: item.discount > 0 ? scheme.primary : scheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            item.discount > 0 ? '${item.discount.toInt()}% dto' : 'Dto',
+                            style: text.labelSmall?.copyWith(
+                              color: item.discount > 0 ? scheme.primary : scheme.onSurfaceVariant,
+                              fontWeight: item.discount > 0 ? FontWeight.w700 : FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -522,6 +556,44 @@ class _CartItemTile extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDiscountDialog(BuildContext context, WidgetRef ref, CartItemEntity item) {
+    final controller = TextEditingController(text: item.discount > 0 ? item.discount.toInt().toString() : '');
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Descuento por línea'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(
+            suffixText: '%',
+            hintText: '0-100',
+          ),
+          onSubmitted: (_) {
+            final val = double.tryParse(controller.text) ?? 0;
+            ref.read(cartProvider.notifier).updateDiscount(item.id, val.clamp(0, 100));
+            Navigator.pop(dialogCtx);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final val = double.tryParse(controller.text) ?? 0;
+              ref.read(cartProvider.notifier).updateDiscount(item.id, val.clamp(0, 100));
+              Navigator.pop(dialogCtx);
+            },
+            child: const Text('Aplicar'),
           ),
         ],
       ),
@@ -632,12 +704,12 @@ class _EmptyCartView extends StatelessWidget {
 // FOOTER — RESUMEN + BOTÓN COBRAR
 // ═════════════════════════════════════════════════════════════════════════════
 
-class _CartFooter extends StatelessWidget {
+class _CartFooter extends ConsumerWidget {
   const _CartFooter({required this.cart});
   final CartState cart;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
@@ -660,6 +732,48 @@ class _CartFooter extends StatelessWidget {
             value: AppFormatters.currency(cart.subtotal),
             icon: Icons.receipt_outlined,
           ),
+          // Descuento global
+          if (cart.saleItems.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            GestureDetector(
+              onTap: () => _showGlobalDiscountDialog(context, ref),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: cart.globalDiscount > 0
+                      ? scheme.primaryContainer.withValues(alpha: 0.4)
+                      : scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.local_offer_outlined,
+                      size: 14,
+                      color: cart.globalDiscount > 0 ? scheme.primary : scheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        cart.globalDiscount > 0
+                            ? 'Descuento global (${cart.globalDiscount.toInt()}%)'
+                            : 'Aplicar descuento global',
+                        style: text.bodySmall?.copyWith(
+                          color: cart.globalDiscount > 0 ? scheme.primary : scheme.onSurfaceVariant,
+                          fontWeight: cart.globalDiscount > 0 ? FontWeight.w600 : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    if (cart.globalDiscount > 0)
+                      GestureDetector(
+                        onTap: () => ref.read(cartProvider.notifier).setGlobalDiscount(0),
+                        child: Icon(Icons.close, size: 14, color: scheme.primary),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           // Devoluciones
           if (cart.hasReturns) ...[
             const SizedBox(height: 6),
@@ -772,6 +886,46 @@ class _CartFooter extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showGlobalDiscountDialog(BuildContext context, WidgetRef ref) {
+    final controller = TextEditingController(
+      text: cart.globalDiscount > 0 ? cart.globalDiscount.toInt().toString() : '',
+    );
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Descuento global'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(
+            suffixText: '%',
+            hintText: '0-100',
+          ),
+          onSubmitted: (_) {
+            final val = double.tryParse(controller.text) ?? 0;
+            ref.read(cartProvider.notifier).setGlobalDiscount(val.clamp(0, 100));
+            Navigator.pop(dialogCtx);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final val = double.tryParse(controller.text) ?? 0;
+              ref.read(cartProvider.notifier).setGlobalDiscount(val.clamp(0, 100));
+              Navigator.pop(dialogCtx);
+            },
+            child: const Text('Aplicar'),
           ),
         ],
       ),

@@ -9,6 +9,7 @@ import 'core/constants/app_constants.dart';
 import 'core/router/app_router.dart';
 import 'core/sync/sync_providers.dart';
 import 'core/theme/app_theme.dart';
+import 'core/update/update_dialog.dart';
 import 'features/settings/presentation/providers/settings_providers.dart';
 
 /// Widget raíz de Aura POS. Configura MaterialApp.router con el tema M3
@@ -39,6 +40,12 @@ class _AuraPosAppState extends ConsumerState<AuraPosApp>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(syncControllerProvider.notifier).startRealtimeIfLinked();
+    });
+
+    // Check for app updates after the first frame. Runs silently in the
+    // background; shows a dialog only if a newer version exists.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForUpdate();
     });
   }
 
@@ -89,6 +96,18 @@ class _AuraPosAppState extends ConsumerState<AuraPosApp>
       // ignore: discarded_futures
       ref.read(syncControllerProvider.notifier).reconcileInBackground();
     });
+  }
+
+  /// Consulta Supabase en background para detectar nuevas versiones.
+  /// Si hay una actualización disponible, muestra un diálogo no invasivo.
+  Future<void> _checkForUpdate() async {
+    if (!mounted) return;
+    try {
+      await UpdateDialog.showIfNeeded(context);
+    } catch (e) {
+      // Silencioso: si falla, la app sigue funcionando normal.
+      debugPrint('[APP] update check failed: $e');
+    }
   }
 
   @override

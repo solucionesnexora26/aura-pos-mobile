@@ -1,0 +1,8 @@
+# Keystore configuration for release builds
+# Generate with: keytool -genkey -v -keystore aura-pos-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias aura-pos
+# Then fill in the values below and rename this file from key.properties.example to key.properties
+
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=aura-pos
+storeFile=../aura-pos-release.jks

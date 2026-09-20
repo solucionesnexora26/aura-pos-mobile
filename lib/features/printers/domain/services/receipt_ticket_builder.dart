@@ -271,8 +271,9 @@ abstract class ReceiptTicketBuilder {
   static List<int> _itemRow(Generator gen, SaleItemRow item) {
   final left = _s(
       '${AppFormatters.quantity(item.quantity.abs())} x ${item.productNameSnapshot}');
+  final discountLabel = item.discount > 0 ? ' (-${item.discount.toInt()}%)' : '';
   return gen.row([
-    PosColumn(text: left, width: 8),
+    PosColumn(text: left + discountLabel, width: 8),
     PosColumn(
       text: AppFormatters.currency(item.lineTotal),
       width: 4,

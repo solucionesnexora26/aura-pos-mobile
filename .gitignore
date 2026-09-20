@@ -46,3 +46,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .vercel
+
+# Keystore (NUNCA commitear)
+android/key.properties
+android/*.jks

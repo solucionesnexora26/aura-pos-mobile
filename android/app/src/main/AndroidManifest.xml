@@ -29,6 +29,9 @@
     <!-- Vibración (feedback táctil en PIN pad) -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Auto-actualización in-app -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <application
         android:label="Aura POS"
         android:name="${applicationName}"
@@ -55,5 +58,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- FileProvider para auto-actualización (Android 7+) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileProvider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>
