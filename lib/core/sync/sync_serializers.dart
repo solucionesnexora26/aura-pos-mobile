@@ -24,7 +24,11 @@ class SyncSerializers {
         'address': _opt(row.address),
         'type': row.type.index,
         'credit_limit': row.creditLimit,
-        'credit_balance': row.creditBalance,
+        // NOTA: `credit_balance` NO se sube desde el dispositivo. Es un dato
+        // autoritativo del servidor (lo mantienen register_credit_sale y los
+        // abonos). Empujarlo desde aquí puede sobrescribir con un valor local
+        // desactualizado y recrear deuda fantasma. En el upsert, omitir la
+        // columna conserva el valor del servidor (o el default 0 al insertar).
         'is_active': row.isActive,
         'created_at': _iso(row.createdAt),
         'updated_at': _iso(row.updatedAt),

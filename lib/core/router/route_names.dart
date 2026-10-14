@@ -39,6 +39,7 @@ abstract class RouteNames {
   // Configuración
   static const String settings = 'settings';
   static const String printerSettings = 'printer-settings';
+  static const String backup = 'backup';
 
   // Cartera / Crédito
   static const String cartera = 'cartera';
@@ -80,6 +81,7 @@ abstract class RoutePaths {
 
   static const String settings = '/settings';
   static const String printerSettings = '/settings/printers';
+  static const String backup = '/settings/backup';
 
   // Cartera / Crédito
   static const String cartera = '/cartera';

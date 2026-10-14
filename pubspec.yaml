@@ -1,7 +1,7 @@
 name: aura_pos
 description: Aura POS - Aplicación móvil de punto de venta de nivel empresarial.
 publish_to: "none"
-version: 1.0.0+2
+version: 1.0.8+10
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -24,6 +24,9 @@ dependencies:
   path_provider: ^2.1.3
   path: ^1.9.0
 
+  # Respaldo / restauración (ZIP + checksum SHA-256)
+  archive: ^3.6.1
+
   # Local key-value storage (preferencias)
   hive: ^2.2.3
   hive_flutter: ^1.1.0
@@ -42,7 +45,7 @@ dependencies:
 
   # Networking (preparado para backend FastAPI)
   dio: ^5.5.0
-  connectivity_plus: ^6.0.5
+  connectivity_plus: ^7.3.1
 
   # Backend central (Supabase) - sincronización offline-first
   supabase_flutter: ^2.5.0

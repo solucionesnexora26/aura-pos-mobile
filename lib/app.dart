@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,13 +10,9 @@ import 'core/constants/app_constants.dart';
 import 'core/router/app_router.dart';
 import 'core/sync/sync_providers.dart';
 import 'core/theme/app_theme.dart';
-import 'core/update/update_dialog.dart';
+import 'core/update/app_update_provider.dart';
 import 'features/settings/presentation/providers/settings_providers.dart';
 
-/// Widget raíz de Aura POS. Configura MaterialApp.router con el tema M3
-/// (claro/oscuro) y el árbol de rutas de GoRouter. También restaura Realtime,
-/// escucha cambios de conectividad y maneja el ciclo de vida de la app para
-/// mantener el TPV conectado.
 class AuraPosApp extends ConsumerStatefulWidget {
   const AuraPosApp({super.key});
 
@@ -34,18 +31,29 @@ class _AuraPosAppState extends ConsumerState<AuraPosApp>
     _connectivitySubscription =
         Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
 
-    // Start Realtime and heartbeat after the first frame. The Supabase
-    // client is already initialized in main.dart, so there's no need to
-    // wait for a FutureProvider — we can start immediately.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(syncControllerProvider.notifier).startRealtimeIfLinked();
     });
 
-    // Check for app updates after the first frame. Runs silently in the
-    // background; shows a dialog only if a newer version exists.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkForUpdate();
+    // Auto-update: solo en release mode. En debug (flutter run) no se verifica.
+    if (kReleaseMode) {
+      // Startup update check: wait two frames so GoRouter's Navigator is mounted.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          performSilentUpdateCheck(ref);
+        });
+      });
+
+      _startPeriodicUpdateChecks();
+    }
+  }
+
+  void _startPeriodicUpdateChecks() {
+    Timer.periodic(const Duration(minutes: 30), (_) {
+      if (!mounted) return;
+      performSilentUpdateCheck(ref);
     });
   }
 
@@ -64,17 +72,19 @@ class _AuraPosAppState extends ConsumerState<AuraPosApp>
     }
   }
 
-  /// Called when the app returns from background.
   void _onAppResumed() {
-    debugPrint('[APP] resumed');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
       ref.read(tpvHeartbeatServiceProvider).tickOnce();
       ref.read(syncControllerProvider.notifier).push();
       ref.read(syncControllerProvider.notifier).startRealtimeIfLinked();
-      // Pull silencioso al volver: captura ediciones hechas en la web
-      // mientras la app estaba en background (sin depender de Realtime).
+
+      // Auto-update on resume: solo en release mode.
+      if (kReleaseMode) {
+        performSilentUpdateCheck(ref);
+      }
+
       // ignore: discarded_futures
       ref.read(syncRepositoryProvider).pullAll().then((r) {
         debugPrint('[APP] resumed pull: ${r.total} rows (custs=${r.customers})');
@@ -91,23 +101,9 @@ class _AuraPosAppState extends ConsumerState<AuraPosApp>
     if (!hasConnection) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // Reconciliación completa (push + pull) en background al recuperar red:
-      // sube operaciones pendientes y descarga cambios hechos desde la web.
       // ignore: discarded_futures
       ref.read(syncControllerProvider.notifier).reconcileInBackground();
     });
-  }
-
-  /// Consulta Supabase en background para detectar nuevas versiones.
-  /// Si hay una actualización disponible, muestra un diálogo no invasivo.
-  Future<void> _checkForUpdate() async {
-    if (!mounted) return;
-    try {
-      await UpdateDialog.showIfNeeded(context);
-    } catch (e) {
-      // Silencioso: si falla, la app sigue funcionando normal.
-      debugPrint('[APP] update check failed: $e');
-    }
   }
 
   @override

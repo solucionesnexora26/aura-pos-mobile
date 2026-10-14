@@ -171,6 +171,29 @@ class CashRegisterRepositoryImpl {
     }
   }
 
+  /// Devuelve la caja abierta actual o, si no existe ninguna, abre una de
+  /// forma automática con monto inicial 0 y la etiqueta [autoShiftLabel].
+  ///
+  /// Se usa al cobrar una venta para garantizar que TODA venta quede vinculada
+  /// a una caja y genere su movimiento, evitando ventas "huérfanas" cuando el
+  /// cajero olvidó abrir la caja antes de vender.
+  Future<Either<Failure, CashRegisterEntity>> ensureOpenRegister({
+    required String userId,
+    String autoShiftLabel = 'Apertura automática',
+  }) async {
+    final openResult = await getOpenRegister();
+    Failure? error;
+    CashRegisterEntity? open;
+    openResult.fold((f) => error = f, (reg) => open = reg);
+    if (error != null) return Left(error!);
+    if (open != null) return Right(open!);
+    return openRegister(
+      userId: userId,
+      openingAmount: 0,
+      shiftLabel: autoShiftLabel,
+    );
+  }
+
   Future<Either<Failure, Unit>> addMovement({
     required String registerId,
     required CashMovementType type,

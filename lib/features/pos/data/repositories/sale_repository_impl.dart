@@ -71,6 +71,7 @@ abstract interface class SaleRepository {
     required List<({PaymentMethod method, double amount, String? reference})> payments,
     required double changeGiven,
     required String userId,
+    String? cashRegisterId,
   });
   Future<Either<Failure, SaleEntity>> getSaleById(String id);
   Future<Either<Failure, List<SaleEntity>>> getOpenSales();
@@ -246,6 +247,7 @@ class SaleRepositoryImpl implements SaleRepository {
     required List<({PaymentMethod method, double amount, String? reference})> payments,
     required double changeGiven,
     required String userId,
+    String? cashRegisterId,
   }) async {
     if (!_isValidUserId(userId)) {
       return const Left(ValidationFailure(
@@ -255,20 +257,25 @@ class SaleRepositoryImpl implements SaleRepository {
     try {
       await _db.transaction(() async {
         final now = DateTime.now();
-        await (_db.update(_db.sales)..where((tbl) => tbl.id.equals(saleId))).write(
-          SalesCompanion(
-            customerId: Value(cart.customer?.id),
-            status: const Value(SaleStatus.paid),
-            subtotal: Value(cart.subtotal),
-            discountTotal: Value(cart.discountTotal),
-            taxTotal: Value(cart.taxTotal),
-            total: Value(cart.total),
-            changeGiven: Value(changeGiven),
-            note: Value(cart.note),
-            updatedAt: Value(now),
-            paidAt: Value(now),
-          ),
+        var companion = SalesCompanion(
+          customerId: Value(cart.customer?.id),
+          status: const Value(SaleStatus.paid),
+          subtotal: Value(cart.subtotal),
+          discountTotal: Value(cart.discountTotal),
+          taxTotal: Value(cart.taxTotal),
+          total: Value(cart.total),
+          changeGiven: Value(changeGiven),
+          note: Value(cart.note),
+          updatedAt: Value(now),
+          paidAt: Value(now),
         );
+        // Vincular la venta a la caja abierta al momento del cobro. Si ya
+        // existía una caja vinculada (venta guardada antes) y ahora hay otra,
+        // se actualiza para que la venta y su movimiento queden coherentes.
+        if (cashRegisterId != null) {
+          companion = companion.copyWith(cashRegisterId: Value(cashRegisterId));
+        }
+        await (_db.update(_db.sales)..where((tbl) => tbl.id.equals(saleId))).write(companion);
         // Ítems actualizados
         await (_db.delete(_db.saleItems)..where((tbl) => tbl.saleId.equals(saleId))).go();
         await _insertItems(saleId, cart.items);

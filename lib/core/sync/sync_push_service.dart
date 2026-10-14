@@ -268,19 +268,17 @@ class SyncPushService {
 
     // 4) Descuento atómico de inventario vía RPC (idempotente, concurrente-safe).
     //    Se ejecuta después de que la venta, ítems y pagos existen en Supabase.
-    try {
-      debugPrint('[SYNC_PUSH] calling apply_sale_inventory RPC: $saleId');
-      await _client.rpc<dynamic>(
-        'apply_sale_inventory',
-        params: {'p_sale_id': sale['id']},
-      );
-      debugPrint('[SYNC_PUSH] inventory RPC OK: $saleId');
-    } catch (e, st) {
-      debugPrint('[SYNC_PUSH][ERROR] apply_sale_inventory failed for sale=$saleId: $e');
-      debugPrint('[SYNC_PUSH][ERROR] stack: $st');
-      // Si la RPC falla (p. ej. producto ya no existe), la venta ya quedó
-      // registrada. El inventario se puede ajustar manualmente.
-    }
+    //    IMPORTANTE (Fase 4): si el RPC falla, el error se propaga a _processRow
+    //    para que el ítem de la cola quede marcado como failed/pending y se
+    //    reintente con backoff. Antes se tragaba el error y el stock quedaba
+    //    inconsistente sin aviso. El upsert de la venta es idempotente, por lo
+    //    que reintentar no duplica datos.
+    debugPrint('[SYNC_PUSH] calling apply_sale_inventory RPC: $saleId');
+    await _client.rpc<dynamic>(
+      'apply_sale_inventory',
+      params: {'p_sale_id': sale['id']},
+    );
+    debugPrint('[SYNC_PUSH] inventory RPC OK: $saleId');
     debugPrint('[SYNC_PUSH] _pushSale completed: $saleId');
   }
 

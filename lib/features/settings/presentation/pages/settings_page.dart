@@ -5,7 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../../core/router/route_names.dart';
 import '../../../../core/sync/sync_providers.dart';
-import '../../../../core/update/update_dialog.dart';
+import '../../../../core/update/app_update_provider.dart';
 import '../../../../core/widgets/app_drawer.dart';
 import '../providers/settings_providers.dart';
 
@@ -130,6 +130,23 @@ class SettingsPage extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
 
+          // ── Datos ─────────────────────────────────────────────────────────
+          _SectionTitle('Datos'),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.backup_outlined),
+                  title: const Text('Respaldo de datos'),
+                  subtitle: const Text('Copia de seguridad local (SQLite + ZIP)'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.goNamed(RouteNames.backup),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // ── Cuenta ────────────────────────────────────────────────────────
           _SectionTitle('Cuenta y seguridad'),
           Card(
@@ -179,9 +196,7 @@ class SettingsPage extends ConsumerWidget {
                   title: const Text('Buscar actualizaciones'),
                   subtitle: const Text('Verificar si hay una nueva versión'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () async {
-                    await UpdateDialog.showIfNeeded(context);
-                  },
+                  onTap: () => performForcedUpdateCheck(ref),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(

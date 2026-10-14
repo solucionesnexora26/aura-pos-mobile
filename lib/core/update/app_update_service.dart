@@ -7,7 +7,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Información de una versión remota disponible.
+const _tag = '[AURA-UPDATE]';
+
 class RemoteVersion {
   final int versionCode;
   final String versionName;
@@ -25,92 +26,191 @@ class RemoteVersion {
     required this.minRequired,
   });
 
-  factory RemoteVersion.fromMap(Map<String, dynamic> m) => RemoteVersion(
-    versionCode: m['version_code'] as int,
-    versionName: m['version_name'] as String,
-    apkUrl: m['apk_url'] as String,
-    changelog: m['changelog'] as String? ?? '',
-    isMandatory: m['is_mandatory'] as bool? ?? false,
-    minRequired: m['min_required'] as int? ?? 0,
-  );
+  factory RemoteVersion.fromMap(Map<String, dynamic> m) {
+    print('$_tag RemoteVersion.fromMap raw=$m');
+    return RemoteVersion(
+      versionCode: (m['version_code'] as num?)?.toInt() ?? 0,
+      versionName: (m['version_name'] ?? '').toString(),
+      apkUrl: (m['apk_url'] ?? '').toString(),
+      changelog: (m['changelog'] ?? '').toString(),
+      isMandatory: m['is_mandatory'] == true,
+      minRequired: (m['min_required'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  @override
+  String toString() => 'RemoteVersion(v$versionName, code=$versionCode, '
+      'mandatory=$isMandatory, minRequired=$minRequired, apk=$apkUrl)';
 }
 
-/// Resultado del chequeo de actualización.
 class UpdateCheckResult {
   final bool hasUpdate;
+  final bool isUpToDate;
   final RemoteVersion? remote;
   final String? error;
 
-  const UpdateCheckResult._({required this.hasUpdate, this.remote, this.error});
+  const UpdateCheckResult._({
+    required this.hasUpdate,
+    this.isUpToDate = false,
+    this.remote,
+    this.error,
+  });
 
   factory UpdateCheckResult.update(RemoteVersion v) =>
       UpdateCheckResult._(hasUpdate: true, remote: v);
+
   factory UpdateCheckResult.upToDate() =>
+      const UpdateCheckResult._(hasUpdate: false, isUpToDate: true);
+
+  factory UpdateCheckResult.noVersions() =>
       const UpdateCheckResult._(hasUpdate: false);
+
   factory UpdateCheckResult.error(String e) =>
       UpdateCheckResult._(hasUpdate: false, error: e);
+
+  @override
+  String toString() => 'UpdateCheckResult(hasUpdate=$hasUpdate, '
+      'isUpToDate=$isUpToDate, remote=$remote, error=$error)';
 }
 
-/// Servicio de auto-actualización in-app.
-///
-/// Flujo:
-/// 1. [checkForUpdate] → Compara versionCode local vs remoto
-/// 2. [downloadApk] → Descarga con progreso a directorio cache
-/// 3. [installApk] → Lanza el instalador nativo vía MethodChannel
 class AppUpdateService {
-  AppUpdateService({Dio? dio}) : _dio = dio ?? Dio();
+  AppUpdateService({Dio? dio}) : _dio = dio ?? _createDio();
 
-  final Dio _dio;
+  late final Dio _dio;
   static const _channel = MethodChannel('com.aura_pos/installer');
 
-  /// Obtiene el versionCode local desde pubspec.yaml.
-  Future<int> getLocalVersionCode() async {
-    final info = await PackageInfo.fromPlatform();
-    return int.tryParse(info.buildNumber) ?? 0;
+  static Dio _createDio() {
+    final d = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(minutes: 10),
+      headers: {
+        'User-Agent': 'AuraPOS/1.0 (Android; Flutter)',
+        'Accept': '*/*',
+      },
+    ));
+    d.interceptors.add(LogInterceptor(
+      request: true,
+      requestBody: true,
+      responseBody: true,
+      error: true,
+      logPrint: (o) => print('$_tag [DIO] $o'),
+    ));
+    return d;
   }
 
-  /// Obtiene el versionName local.
+  Future<int> getLocalVersionCode() async {
+    final info = await PackageInfo.fromPlatform();
+    final code = int.tryParse(info.buildNumber) ?? 0;
+    print('$_tag getLocalVersionCode: buildNumber="${info.buildNumber}" '
+        'parsed=$code version="${info.version}" packageName="${info.packageName}"');
+    return code;
+  }
+
   Future<String> getLocalVersionName() async {
     final info = await PackageInfo.fromPlatform();
     return info.version;
   }
 
-  /// Consulta Supabase y compara con la versión local.
-  Future<UpdateCheckResult> checkForUpdate() async {
+  Future<bool> canInstallPackages() async {
     try {
-      final localCode = await getLocalVersionCode();
-      debugPrint('[AppUpdate] versionCode local=$localCode');
-
-      final response = await Supabase.instance.client
-          .rpc<List<dynamic>>('get_latest_app_version');
-
-      if (response.isEmpty) {
-        debugPrint('[AppUpdate] no hay versiones en el servidor');
-        return UpdateCheckResult.upToDate();
-      }
-
-      final data = response.first as Map<String, dynamic>;
-      final remote = RemoteVersion.fromMap(data);
-
-      debugPrint('[AppUpdate] versionCode remoto=${remote.versionCode} '
-          'nombre=${remote.versionName} mandatory=${remote.isMandatory}');
-
-      if (remote.versionCode > localCode) {
-        return UpdateCheckResult.update(remote);
-      }
-      return UpdateCheckResult.upToDate();
+      final result = await _channel.invokeMethod<bool>('canInstallPackages');
+      print('$_tag canInstallPackages: $result');
+      return result ?? true;
     } catch (e) {
-      debugPrint('[AppUpdate] error al consultar versión: $e');
-      return UpdateCheckResult.error(e.toString());
+      print('$_tag canInstallPackages ERROR: $e');
+      return true;
     }
   }
 
-  /// Descarga el APK mostrando progreso.
-  /// Devuelve la ruta local del archivo descargado.
+  Future<void> requestInstallPermission() async {
+    try {
+      print('$_tag requestInstallPermission: calling native...');
+      await _channel.invokeMethod('requestInstallPermission');
+      print('$_tag requestInstallPermission: done');
+    } catch (e) {
+      print('$_tag requestInstallPermission ERROR: $e');
+    }
+  }
+
+  Future<UpdateCheckResult> checkForUpdate() async {
+    print('$_tag ========================================');
+    print('$_tag checkForUpdate() START');
+
+    try {
+      final localCode = await getLocalVersionCode();
+      print('$_tag local versionCode = $localCode');
+
+      print('$_tag Supabase instance exists: ${Supabase.instance.isInitialized}');
+
+      print('$_tag calling .from("app_versions").select()...');
+      final response = await Supabase.instance.client
+          .from('app_versions')
+          .select('version_code, version_name, apk_url, changelog, is_mandatory, min_required')
+          .order('version_code', ascending: false)
+          .limit(1);
+
+      print('$_tag query response type: ${response.runtimeType}');
+      print('$_tag query response: $response');
+
+      if (response == null) {
+        print('$_tag response is NULL → noVersions');
+        return UpdateCheckResult.noVersions();
+      }
+
+      if (response is List && response.isEmpty) {
+        print('$_tag response is empty List → noVersions');
+        return UpdateCheckResult.noVersions();
+      }
+
+      final data = (response is List) ? response.first : response;
+      print('$_tag data type: ${data.runtimeType}');
+      print('$_tag data value: $data');
+
+      if (data is! Map<String, dynamic>) {
+        print('$_tag data is NOT Map<String, dynamic> → noVersions');
+        return UpdateCheckResult.noVersions();
+      }
+
+      final remote = RemoteVersion.fromMap(data);
+      print('$_tag remote parsed: $remote');
+
+      if (remote.apkUrl.isEmpty) {
+        print('$_tag apkUrl is EMPTY → noVersions');
+        return UpdateCheckResult.noVersions();
+      }
+
+      if (remote.minRequired > 0 && localCode < remote.minRequired) {
+        print('$_tag FORCED update: local=$localCode < min=${remote.minRequired}');
+        return UpdateCheckResult.update(remote);
+      }
+
+      if (remote.versionCode > localCode) {
+        print('$_tag UPDATE AVAILABLE: remote=${remote.versionCode} > local=$localCode');
+        return UpdateCheckResult.update(remote);
+      }
+
+      print('$_tag UP TO DATE: remote=${remote.versionCode} <= local=$localCode');
+      return UpdateCheckResult.upToDate();
+    } on DioException catch (e) {
+      final msg = _friendlyError(e);
+      print('$_tag DIO ERROR: type=${e.type} statusCode=${e.response?.statusCode} msg=$msg');
+      return UpdateCheckResult.error(msg);
+    } catch (e, st) {
+      print('$_tag UNEXPECTED ERROR: $e');
+      print('$_tag STACK: $st');
+      return UpdateCheckResult.error(_friendlyErrorMessage(e));
+    } finally {
+      print('$_tag checkForUpdate() END');
+      print('$_tag ========================================');
+    }
+  }
+
   Future<String> downloadApk(
     String url, {
     void Function(double progress)? onProgress,
   }) async {
+    await clearOldDownloads();
+
     final dir = await getTemporaryDirectory();
     final updatesDir = Directory('${dir.path}/updates');
     if (!updatesDir.existsSync()) {
@@ -118,9 +218,10 @@ class AppUpdateService {
     }
     final filePath = '${updatesDir.path}/aura_pos_update.apk';
 
-    debugPrint('[AppUpdate] descargando APK desde: $url');
+    print('$_tag downloadApk: url=$url');
+    print('$_tag downloadApk: saving to $filePath');
 
-    await _dio.download(
+    final response = await _dio.download(
       url,
       filePath,
       onReceiveProgress: (received, total) {
@@ -130,32 +231,79 @@ class AppUpdateService {
       },
       options: Options(
         receiveTimeout: const Duration(minutes: 10),
-        headers: {'Connection': 'keep-alive'},
+        headers: {
+          'Connection': 'keep-alive',
+          'User-Agent': 'AuraPOS/1.0 (Android; Flutter)',
+        },
+        validateStatus: (status) => status != null && status < 400,
       ),
     );
 
-    debugPrint('[AppUpdate] APK descargado en: $filePath');
+    print('$_tag downloadApk: statusCode=${response.statusCode}');
+
+    if (response.statusCode != 200) {
+      throw Exception('Error del servidor: ${response.statusCode}');
+    }
+
+    final file = File(filePath);
+    if (!file.existsSync() || file.lengthSync() < 1024 * 1024) {
+      await file.delete();
+      throw Exception('Archivo APK inválido o incompleto');
+    }
+
+    print('$_tag downloadApk: downloaded ${file.lengthSync()} bytes');
     return filePath;
   }
 
-  /// Lanza el instalador nativo de Android vía MethodChannel.
-  Future<void> installApk(String filePath) async {
+  Future<bool> installApk(String filePath) async {
     try {
-      debugPrint('[AppUpdate] solicitando instalación: $filePath');
-      await _channel.invokeMethod('installApk', {'filePath': filePath});
+      print('$_tag installApk: $filePath');
+      final result = await _channel.invokeMethod<bool>('installApk', {'filePath': filePath});
+      print('$_tag installApk result: $result');
+      return result ?? true;
     } on PlatformException catch (e) {
+      print('$_tag installApk PlatformException: ${e.message}');
       throw Exception('No se pudo iniciar la instalación: ${e.message}');
     }
   }
 
-  /// Limpia APKs descargados previamente.
   Future<void> clearOldDownloads() async {
     try {
       final dir = await getTemporaryDirectory();
       final updatesDir = Directory('${dir.path}/updates');
       if (updatesDir.existsSync()) {
         await updatesDir.delete(recursive: true);
+        print('$_tag old downloads cleared');
       }
-    } catch (_) {}
+    } catch (e) {
+      print('$_tag clearOldDownloads error: $e');
+    }
+  }
+
+  String _friendlyError(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+        return 'Sin conexión. Verifica tu red e intenta de nuevo.';
+      case DioExceptionType.connectionError:
+        return 'Sin conexión a internet.';
+      case DioExceptionType.badResponse:
+        final code = e.response?.statusCode;
+        if (code == 404) return 'El archivo no se encontró. Contacta al administrador.';
+        if (code == 403) return 'Acceso denegado al servidor de descarga.';
+        if (code != null && code >= 500) return 'Error del servidor. Intenta más tarde.';
+        return 'Error de red ($code). Intenta de nuevo.';
+      default:
+        return 'Error de red. Verifica tu conexión.';
+    }
+  }
+
+  String _friendlyErrorMessage(Object e) {
+    final s = e.toString();
+    if (s.contains('SocketException')) return 'Sin conexión a internet.';
+    if (s.contains('TimeoutException')) return 'La conexión tardó demasiado.';
+    if (s.contains('HandshakeException')) return 'Error de seguridad SSL.';
+    return 'Error inesperado. Intenta de nuevo.';
   }
 }

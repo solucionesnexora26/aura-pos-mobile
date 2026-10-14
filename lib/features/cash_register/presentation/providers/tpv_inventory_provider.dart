@@ -46,11 +46,13 @@ class StockItem {
     required this.id,
     required this.name,
     required this.stock,
+    required this.price,
   });
 
   final String id;
   final String name;
   final double stock;
+  final double price;
 }
 
 /// Lista de todos los productos controlados con su stock actual en el TPV.
@@ -73,6 +75,7 @@ final currentTpvStockProvider = StreamProvider<List<StockItem>>((ref) {
               id: p.id,
               name: p.name,
               stock: stockByProduct[p.id] ?? p.stockQuantity,
+              price: p.price,
             ))
         .where((s) => s.stock > 0)
         .toList();

@@ -3,6 +3,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/sync/sync_providers.dart';
 import '../../../../core/utils/formatters.dart';
@@ -94,7 +95,16 @@ class _NotLinkedView extends HookConsumerWidget {
       ref.read(syncControllerProvider.notifier).activateAndPull(code);
     }
 
-    void onScan() {
+    void onScan() async {
+      final status = await Permission.camera.request();
+      if (!status.isGranted) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Permiso de cámara requerido para escanear')),
+        );
+        return;
+      }
+      if (!context.mounted) return;
       showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
@@ -432,6 +442,25 @@ class _ScannerSheet extends HookWidget {
             Expanded(
               child: MobileScanner(
                 controller: controller,
+                errorBuilder: (context, error, child) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.videocam_off_outlined, size: 48, color: Theme.of(context).colorScheme.error),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No se pudo acceder a la cámara.\nVerifica los permisos en Ajustes.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
                 onDetect: (capture) async {
                   final barcode = capture.barcodes.firstOrNull?.rawValue;
                   if (barcode == null) return;

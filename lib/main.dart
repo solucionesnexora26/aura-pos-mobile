@@ -6,6 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/backup/backup_service.dart';
 import 'core/constants/app_constants.dart';
 import 'core/sync/device_id_service.dart';
 import 'core/sync/supabase_config.dart';
@@ -26,6 +27,18 @@ Future<void> main() async {
   await Hive.initFlutter();
   await Hive.openBox<dynamic>(AppConstants.hiveBoxPreferences);
 
+  // Aplica una restauración de respaldo pendiente (si la hay) ANTES de abrir
+  // la base de datos Drift. La sustitución del archivo ocurre mientras la base
+  // todavía está cerrada, evitando cualquier corrupción.
+  try {
+    final bool? restored = await BackupService.applyPendingRestoreIfAny();
+    if (restored == true) {
+      debugPrint('[BACKUP] Restauración aplicada desde respaldo.');
+    }
+  } catch (e) {
+    debugPrint('[BACKUP] No se pudo aplicar la restauración pendiente: $e');
+  }
+
   final deviceIdService = DeviceIdService(
     secureStorage: const FlutterSecureStorage(
       aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -43,6 +56,9 @@ Future<void> main() async {
     publishableKey: SupabaseConfig.supabaseAnonKey,
     headers: {SupabaseConfig.deviceIdHeader: deviceId},
   );
+  print('[AURA-UPDATE] [MAIN] Supabase initialized: ${Supabase.instance.isInitialized}');
+  print('[AURA-UPDATE] [MAIN] Supabase URL: ${SupabaseConfig.supabaseUrl}');
+  print('[AURA-UPDATE] [MAIN] Supabase key prefix: ${SupabaseConfig.supabaseAnonKey.substring(0, 10)}...');
 
   runApp(
     const ProviderScope(

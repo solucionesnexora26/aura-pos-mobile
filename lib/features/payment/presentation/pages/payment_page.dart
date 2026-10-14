@@ -113,13 +113,25 @@ class PaymentPage extends HookConsumerWidget {
       }
       final userId = session.user!.id;
 
-      // Obtener la caja abierta para vincularla a la venta
+      // Garantizar que exista una caja abierta. Si el cajero olvidó abrirla,
+      // se abre automáticamente (monto inicial 0) para que la venta quede
+      // vinculada a la caja y se registre su movimiento. Así ninguna venta
+      // queda "huérfana" ni se pierde de los movimientos de caja.
+      final bool needsRegister = allPayments.any((p) => p.amount > 0);
       String? cashRegisterId;
-      final openRegResult = await cashRepo.getOpenRegister();
-      openRegResult.fold(
-        (f) => debugPrint('[CASH_REGISTER][WARN] getOpenRegister failed: ${f.message} — sale without cash linkage'),
-        (reg) => cashRegisterId = reg?.id,
-      );
+      if (needsRegister) {
+        final ensureResult = await cashRepo.ensureOpenRegister(userId: userId);
+        ensureResult.fold(
+          (f) => debugPrint('[CASH_REGISTER][WARN] ensureOpenRegister failed: ${f.message} — sale without cash linkage'),
+          (reg) => cashRegisterId = reg.id,
+        );
+      } else {
+        final openRegResult = await cashRepo.getOpenRegister();
+        openRegResult.fold(
+          (f) => debugPrint('[CASH_REGISTER][WARN] getOpenRegister failed: ${f.message}'),
+          (reg) => cashRegisterId = reg?.id,
+        );
+      }
 
       // Si no hay saleId, primero creamos la venta como abierta
       String saleId = cart.openSaleId ?? '';
@@ -142,6 +154,7 @@ class PaymentPage extends HookConsumerWidget {
         payments: allPayments,
         changeGiven: noPayment ? 0 : (change > 0 ? change : 0),
         userId: userId,
+        cashRegisterId: cashRegisterId,
       );
 
       if (result.isLeft()) {

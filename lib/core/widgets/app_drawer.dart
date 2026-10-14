@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../constants/app_constants.dart';
 import '../router/route_names.dart';
@@ -77,11 +78,18 @@ class AppDrawer extends StatelessWidget {
             const Divider(),
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
-              child: Text(
-                'v1.0.0',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
+              child: FutureBuilder<PackageInfo>(
+                future: PackageInfo.fromPlatform(),
+                builder: (_, snap) {
+                  final v = snap.data?.version ?? '...';
+                  final build = snap.data?.buildNumber ?? '';
+                  return Text(
+                    'v$v+$build',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                  );
+                },
               ),
             ),
           ],

@@ -87,7 +87,9 @@ class CreditOverviewItem {
     );
   }
 
-  int get pendingCount => pendingSales.length;
+  /// Número de ventas a crédito realmente pendientes (con saldo > 0). Evita
+  /// contar ventas ya pagadas cuyo `pending` quedó en 0.
+  int get pendingCount => pendingSales.where((p) => p.pending > 0.004).length;
 }
 
 class CreditSummary {

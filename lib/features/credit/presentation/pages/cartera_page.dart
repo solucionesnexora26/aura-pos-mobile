@@ -55,7 +55,12 @@ class _CarteraPageState extends ConsumerState<CarteraPage> {
         loading: () => const AppLoadingView(message: 'Cargando cartera…'),
         error: (e, _) => AppErrorView(message: e.toString()),
         data: (items) {
-          if (items.isEmpty) {
+          // Solo clientes con deuda real (> 0). La RPC puede devolver clientes
+          // cuyo `credit_balance` quedó desincronizado en un valor residual
+          // mínimo aunque su saldo real ya sea 0; se filtran aquí para no
+          // mostrar deudas fantasma.
+          final owedItems = items.where((i) => i.totalOwed > 0.004).toList();
+          if (owedItems.isEmpty) {
             return const AppEmptyView(
               message: 'No hay clientes con saldo pendiente.',
               icon: Icons.account_balance_wallet_outlined,
@@ -64,11 +69,11 @@ class _CarteraPageState extends ConsumerState<CarteraPage> {
 
           // ── Filtrado por búsqueda ───────────────────────────────────
           final filtered = _search.isEmpty
-              ? items
-              : items.where((i) =>
+              ? owedItems
+              : owedItems.where((i) =>
                   i.customerName.toLowerCase().contains(_search.toLowerCase())).toList();
 
-          final totalDebt = items.fold<double>(0, (s, i) => s + i.totalOwed);
+          final totalDebt = owedItems.fold<double>(0, (s, i) => s + i.totalOwed);
 
           return Column(
             children: [
@@ -82,7 +87,7 @@ class _CarteraPageState extends ConsumerState<CarteraPage> {
                     Icon(Icons.account_balance_wallet, color: scheme.primary, size: 22),
                     const SizedBox(width: 10),
                     Text(
-                      '${items.length} cliente(s) con deuda',
+                      '${owedItems.length} cliente(s) con deuda',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),

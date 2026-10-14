@@ -340,8 +340,8 @@ class _CotejoRutaListState extends State<_CotejoRutaList> {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
-    double totalLoaded() => widget.items.fold(0, (s, it) => s + it.stock);
-    double totalReturned() => widget.items.fold(0, (s, it) => s + _returned(it.id));
+    double totalLoaded() => widget.items.fold(0, (s, it) => s + it.stock * it.price);
+    double totalReturned() => widget.items.fold(0, (s, it) => s + _returned(it.id) * it.price);
     double missing() => (totalLoaded() - totalReturned()).clamp(0, double.infinity);
 
     return Column(
@@ -363,7 +363,7 @@ class _CotejoRutaListState extends State<_CotejoRutaList> {
                   children: [
                     Text(it.name, style: text.bodyMedium),
                     Text(
-                      'Disponible: ${AppFormatters.currency(it.stock)}',
+                      'Disponible: ${AppFormatters.currency(it.stock * it.price)}',
                       style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                     ),
                   ],

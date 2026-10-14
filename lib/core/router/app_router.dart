@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -28,12 +29,18 @@ import '../../features/products/presentation/pages/product_form_page.dart';
 import '../../features/products/presentation/pages/products_page.dart';
 import '../../features/receipts/presentation/pages/receipt_preview_page.dart';
 import '../../features/receipts/presentation/pages/receipts_history_page.dart';
+import '../../features/settings/presentation/pages/backup_page.dart';
 import '../../features/settings/presentation/pages/settings_page.dart';
 import '../../features/sync/presentation/pages/link_tpv_page.dart';
 import '../widgets/app_exit_guard.dart';
 import '../widgets/main_shell.dart';
 import '../widgets/splash_page.dart';
 import 'route_names.dart';
+
+/// GlobalKey for GoRouter's root Navigator. Used to obtain a BuildContext that
+/// is a descendant of both MaterialApp (has MaterialLocalizations) and the
+/// Navigator (can use showDialog / Navigator.of).
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Router raíz de Aura POS. La protección de rutas (redirect) exige sesión
 /// activa para cualquier ruta fuera del flujo de autenticación, cumpliendo
@@ -48,6 +55,7 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
   // ir (PIN, login o dashboard) saliendo del /splash de arranque.
   ref.listen(sessionLoadedProvider, (_, __) => authRefresh.value++);
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: RoutePaths.splash,
     refreshListenable: authRefresh,
     debugLogDiagnostics: false,
@@ -231,6 +239,11 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
                 path: 'printers',
                 name: RouteNames.printerSettings,
                 builder: (context, state) => const PrinterSettingsPage(),
+              ),
+              GoRoute(
+                path: 'backup',
+                name: RouteNames.backup,
+                builder: (context, state) => const BackupPage(),
               ),
             ],
           ),
