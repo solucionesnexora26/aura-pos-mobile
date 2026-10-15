@@ -9,14 +9,46 @@ class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
 
   static const _items = [
-    _DrawerItem(path: RoutePaths.dashboard, icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Panel'),
-    _DrawerItem(path: RoutePaths.pos, icon: Icons.point_of_sale_outlined, selectedIcon: Icons.point_of_sale, label: 'Venta'),
-    _DrawerItem(path: RoutePaths.products, icon: Icons.inventory_2_outlined, selectedIcon: Icons.inventory_2, label: 'Productos'),
-    _DrawerItem(path: RoutePaths.customers, icon: Icons.people_outline, selectedIcon: Icons.people, label: 'Clientes'),
-    _DrawerItem(path: RoutePaths.cartera, icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet, label: 'Cartera'),
-    _DrawerItem(path: RoutePaths.cashRegister, icon: Icons.savings_outlined, selectedIcon: Icons.savings, label: 'Caja'),
-    _DrawerItem(path: RoutePaths.receiptsHistory, icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Recibos'),
-    _DrawerItem(path: RoutePaths.settings, icon: Icons.settings_outlined, selectedIcon: Icons.settings, label: 'Ajustes'),
+    _DrawerItem(
+        path: RoutePaths.dashboard,
+        icon: Icons.dashboard_outlined,
+        selectedIcon: Icons.dashboard,
+        label: 'Panel'),
+    _DrawerItem(
+        path: RoutePaths.pos,
+        icon: Icons.point_of_sale_outlined,
+        selectedIcon: Icons.point_of_sale,
+        label: 'Venta'),
+    _DrawerItem(
+        path: RoutePaths.products,
+        icon: Icons.inventory_2_outlined,
+        selectedIcon: Icons.inventory_2,
+        label: 'Productos'),
+    _DrawerItem(
+        path: RoutePaths.customers,
+        icon: Icons.people_outline,
+        selectedIcon: Icons.people,
+        label: 'Clientes'),
+    _DrawerItem(
+        path: RoutePaths.cartera,
+        icon: Icons.account_balance_wallet_outlined,
+        selectedIcon: Icons.account_balance_wallet,
+        label: 'Cartera'),
+    _DrawerItem(
+        path: RoutePaths.cashRegister,
+        icon: Icons.savings_outlined,
+        selectedIcon: Icons.savings,
+        label: 'Caja'),
+    _DrawerItem(
+        path: RoutePaths.receiptsHistory,
+        icon: Icons.receipt_long_outlined,
+        selectedIcon: Icons.receipt_long,
+        label: 'Recibos'),
+    _DrawerItem(
+        path: RoutePaths.settings,
+        icon: Icons.settings_outlined,
+        selectedIcon: Icons.settings,
+        label: 'Ajustes'),
   ];
 
   @override
@@ -65,8 +97,10 @@ class AppDrawer extends StatelessWidget {
                   ),
                 ),
                 selected: selected,
-                selectedTileColor: scheme.primaryContainer.withValues(alpha: 0.3),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                selectedTileColor:
+                    scheme.primaryContainer.withValues(alpha: 0.3),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28)),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                 onTap: () {
                   Navigator.of(context).pop();

@@ -1,18 +1,10 @@
-import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:file_picker/file_picker.dart';
 
-import '../../../../core/di/providers.dart';
-import '../../../../core/router/route_names.dart';
 import '../../../../core/widgets/app_drawer.dart';
 import '../../../../core/widgets/state_views.dart';
 import '../../domain/entities/product_entity.dart';
-import '../../domain/utils/excel_utils.dart';
 import '../providers/product_providers.dart';
 import '../widgets/category_filter_bar.dart';
 import '../widgets/product_card.dart';
@@ -45,7 +37,7 @@ class ProductsPage extends HookConsumerWidget {
         title: const Text('Productos'),
         actions: [
           IconButton(
-            tooltip: 'Favoritos',
+            tooltip: filter.onlyFavorites ? 'Mostrar todos' : 'Ver favoritos',
             icon: Icon(
               filter.onlyFavorites ? Icons.star : Icons.star_outline,
               color: filter.onlyFavorites
@@ -54,62 +46,6 @@ class ProductsPage extends HookConsumerWidget {
             ),
             onPressed: () =>
                 ref.read(productFilterProvider.notifier).toggleFavorites(),
-          ),
-          PopupMenuButton<String>(
-            tooltip: 'Opciones',
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) async {
-              if (value == 'download_template') {
-                await ExcelUtils.downloadTemplate();
-              } else if (value == 'import') {
-                _importProducts(context, ref);
-              } else if (value == 'new_product') {
-                context.goNamed(RouteNames.productForm);
-              } else if (value == 'delete_all') {
-                await _deleteAllProducts(context, ref);
-              }
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
-                value: 'new_product',
-                child: ListTile(
-                  leading: Icon(Icons.add),
-                  title: Text('Nuevo producto'),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'download_template',
-                child: ListTile(
-                  leading: Icon(Icons.download_outlined),
-                  title: Text('Descargar plantilla Excel'),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                value: 'import',
-                child: ListTile(
-                  leading: Icon(Icons.upload_file_outlined),
-                  title: Text('Importar productos'),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'delete_all',
-                child: ListTile(
-                  leading: Icon(Icons.delete_forever, color: Colors.red),
-                  title: Text('Eliminar todos (temporal)',
-                      style: TextStyle(color: Colors.red)),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ],
           ),
         ],
         bottom: PreferredSize(
@@ -126,7 +62,9 @@ class ProductsPage extends HookConsumerWidget {
                         icon: const Icon(Icons.clear),
                         onPressed: () {
                           searchCtrl.clear();
-                          ref.read(productFilterProvider.notifier).setSearch('');
+                          ref
+                              .read(productFilterProvider.notifier)
+                              .setSearch('');
                         },
                       )
                     : null,
@@ -151,10 +89,8 @@ class ProductsPage extends HookConsumerWidget {
                   return AppEmptyView(
                     message: filter.searchQuery != null
                         ? 'Sin resultados para "${filter.searchQuery}"'
-                        : 'No hay productos. Toca + para agregar uno.',
+                        : 'No hay productos para mostrar.',
                     icon: Icons.inventory_2_outlined,
-                    actionLabel: 'Agregar producto',
-                    onAction: () => context.goNamed(RouteNames.productForm),
                   );
                 }
                 return _ProductGrid(products: filtered);
@@ -164,162 +100,6 @@ class ProductsPage extends HookConsumerWidget {
         ],
       ),
     );
-  }
-
-  Future<void> _deleteAllProducts(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar todos los productos'),
-        content: const Text(
-          'Se borrarán TODOS los productos del dispositivo. '
-          'Esta acción no se puede deshacer.\n\n'
-          '¿Continuar?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Eliminar todo'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    final db = ref.read(appDatabaseProvider);
-    await db.transaction(() async {
-      await db.delete(db.productVariants).go();
-      await db.delete(db.products).go();
-    });
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Todos los productos eliminados')),
-      );
-    }
-  }
-
-  Future<void> _importProducts(BuildContext context, WidgetRef ref) async {
-    Uint8List? fileBytes;
-
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['xlsx', 'xls', 'csv'],
-        withData: true,
-      );
-
-      if (result == null || result.files.isEmpty) return;
-
-      fileBytes = result.files.first.bytes;
-
-      if (fileBytes == null && result.files.first.path != null) {
-        final file = File(result.files.first.path!);
-        fileBytes = await file.readAsBytes();
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al seleccionar archivo: $e')),
-        );
-      }
-      return;
-    }
-
-    if (fileBytes == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo leer el archivo.')),
-        );
-      }
-      return;
-    }
-
-    if (!context.mounted) return;
-
-    late final List<Map<String, dynamic>> products;
-    try {
-      products = await ExcelUtils.importFromExcel(fileBytes);
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al procesar Excel: $e')),
-        );
-      }
-      return;
-    }
-
-    if (!context.mounted) return;
-
-    if (products.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se encontraron productos en el archivo.')),
-      );
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Importar ${products.length} productos'),
-        content: Text(
-          'Se encontraron ${products.length} productos.\n\n¿Deseas importarlos?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Importar'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && context.mounted) {
-      int saved = 0;
-      for (final p in products) {
-        final entity = ProductEntity(
-          id: p['id'] as String,
-          name: p['name'] as String,
-          description: p['description'] as String?,
-          sku: p['sku'] as String?,
-          barcode: p['barcode'] as String?,
-          categoryId: null,
-          brandId: null,
-          supplierId: null,
-          price: (p['price'] as num).toDouble(),
-          cost: (p['cost'] as num).toDouble(),
-          taxRate: (p['taxRate'] as num).toDouble(),
-          unitType: p['unitType'] as ProductUnitTypeEntity,
-          trackStock: p['trackStock'] as bool,
-          stockQuantity: (p['stockQuantity'] as num).toDouble(),
-          lowStockThreshold: (p['lowStockThreshold'] as num).toDouble(),
-          hasVariants: p['hasVariants'] as bool,
-          isFavorite: false,
-          isActive: p['isActive'] as bool,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-        final result = await ref.read(createProductUseCaseProvider).call(entity);
-        result.fold((f) {}, (_) => saved++);
-      }
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$saved de ${products.length} productos importados.'),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-          ),
-        );
-      }
-    }
   }
 }
 

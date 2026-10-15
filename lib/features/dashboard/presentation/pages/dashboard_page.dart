@@ -335,7 +335,6 @@ class _QuickAccessGrid extends StatelessWidget {
     final items = [
       (Icons.point_of_sale_rounded, 'Nueva venta', RouteNames.pos, Colors.green),
       (Icons.receipt_long_outlined, 'Ventas abiertas', RouteNames.openSales, Colors.orange),
-      (Icons.inventory_2_outlined, 'Productos', RouteNames.products, Colors.blue),
       (Icons.people_outline, 'Clientes', RouteNames.customers, Colors.purple),
       (Icons.list_alt_outlined, 'Inventario', RouteNames.inventory, Colors.teal),
       (Icons.settings_outlined, 'Ajustes', RouteNames.settings, Colors.grey),

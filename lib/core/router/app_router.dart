@@ -22,11 +22,11 @@ import '../../features/credit/presentation/pages/customer_credit_detail_page.dar
 import '../../features/dashboard/presentation/pages/dashboard_page.dart';
 import '../../features/inventory/presentation/pages/inventory_page.dart';
 import '../../features/payment/presentation/pages/payment_page.dart';
+import '../../features/products/presentation/pages/products_page.dart';
+import '../../features/products/presentation/pages/product_details_page.dart';
 import '../../features/pos/presentation/pages/open_sales_page.dart';
 import '../../features/pos/presentation/pages/pos_page.dart';
 import '../../features/printers/presentation/pages/printer_settings_page.dart';
-import '../../features/products/presentation/pages/product_form_page.dart';
-import '../../features/products/presentation/pages/products_page.dart';
 import '../../features/receipts/presentation/pages/receipt_preview_page.dart';
 import '../../features/receipts/presentation/pages/receipts_history_page.dart';
 import '../../features/settings/presentation/pages/backup_page.dart';
@@ -78,7 +78,8 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
           state.matchedLocation == RoutePaths.pinRecovery;
 
       // Hay un usuario recordado localmente pero aún no desbloquea con PIN.
-      final bool hasRememberedUser = session.user != null && !session.isAuthenticated;
+      final bool hasRememberedUser =
+          session.user != null && !session.isAuthenticated;
 
       // Usuario autenticado pero aún debe configurar PIN.
       if (session.requiresPinSetup) {
@@ -134,12 +135,14 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.pinRecovery,
         name: RouteNames.pinRecovery,
-        builder: (context, state) => const AppExitGuard(child: PinRecoveryPage()),
+        builder: (context, state) =>
+            const AppExitGuard(child: PinRecoveryPage()),
       ),
       GoRoute(
         path: RoutePaths.switchUser,
         name: RouteNames.switchUser,
-        builder: (context, state) => const AppExitGuard(child: SwitchUserPage()),
+        builder: (context, state) =>
+            const AppExitGuard(child: SwitchUserPage()),
       ),
       GoRoute(
         path: RoutePaths.linkTpv,
@@ -222,10 +225,10 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const ProductsPage(),
             routes: [
               GoRoute(
-                path: 'form',
-                name: RouteNames.productForm,
-                builder: (context, state) => ProductFormPage(
-                  productId: state.uri.queryParameters['id'],
+                path: ':id',
+                name: RouteNames.productDetails,
+                builder: (context, state) => ProductDetailsPage(
+                  productId: state.pathParameters['id']!,
                 ),
               ),
             ],

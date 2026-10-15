@@ -1,7 +1,7 @@
 name: aura_pos
 description: Aura POS - Aplicación móvil de punto de venta de nivel empresarial.
 publish_to: "none"
-version: 1.0.8+10
+version: 1.0.9+14
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -102,6 +102,8 @@ dev_dependencies:
   mocktail: ^1.0.4
 
 dependency_overrides:
+  mobile_scanner:
+    path: packages/mobile_scanner
   # Fork local: el plugin publicado antepone LF a writebytes y no cierra el
   # BluetoothSocket explícitamente. Este fork conserva el API Dart público.
   print_bluetooth_thermal:

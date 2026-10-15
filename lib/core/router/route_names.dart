@@ -34,7 +34,7 @@ abstract class RouteNames {
   // Inventario / productos
   static const String inventory = 'inventory';
   static const String products = 'products';
-  static const String productForm = 'product-form';
+  static const String productDetails = 'product-details';
 
   // Configuración
   static const String settings = 'settings';
@@ -77,7 +77,6 @@ abstract class RoutePaths {
 
   static const String inventory = '/inventory';
   static const String products = '/products';
-  static const String productForm = '/products/form';
 
   static const String settings = '/settings';
   static const String printerSettings = '/settings/printers';

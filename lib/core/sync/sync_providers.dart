@@ -140,29 +140,62 @@ class SyncController extends Notifier<SyncState> {
     return const SyncIdle();
   }
 
-  Future<void> activateAndPull(String code) async {
+  Future<LinkedTpvInfo?> activateAndPull(String code) async {
     state = const SyncLinking();
+    final service = ref.read(tpvActivationServiceProvider);
+    late final TpvActivationResult activation;
     try {
-      final service = ref.read(tpvActivationServiceProvider);
-      final result = await service.activate(code);
-      ref.invalidate(linkedTpvInfoProvider);
-      state = SyncLinked(tpvId: result.tpvId, tpvName: result.name);
-      state = const SyncPushing();
-      final futures = <Future<void>>[
-        ref.read(syncQueueServiceProvider).enqueueAllCatalog().then((_) =>
-            ref.read(syncPushServiceProvider).pushAll(),),
-        ref.read(syncRepositoryProvider).pullAll(),
-      ];
-      await Future.wait(futures);
-      state = const SyncIdle();
-      _startRealtime();
-      _startHeartbeat();
-      _startPeriodicReconcile();
+      activation = await service.activate(code);
     } on TpvActivationException catch (e) {
       state = SyncActivationFailed(e.message);
+      return null;
     } catch (e) {
       state = SyncActivationFailed('Error inesperado: $e');
+      return null;
     }
+
+    final linkedInfo = LinkedTpvInfo(
+      id: activation.tpvId,
+      name: activation.name,
+      activationCode: activation.activationCode,
+      deviceId: activation.deviceId,
+      status: 1,
+      lastSeenAt: DateTime.now(),
+    );
+
+    // Activation is committed remotely and the secure local IDs are saved.
+    // Refresh the screen provider once now and again after the initial sync;
+    // the first read can race the TPV row becoming visible through RLS.
+    ref.invalidate(linkedTpvInfoProvider);
+    state = SyncLinked(tpvId: activation.tpvId, tpvName: activation.name);
+    state = const SyncPushing();
+
+    String? syncError;
+    try {
+      final outcomes = await Future.wait<Object>([
+        ref
+            .read(syncQueueServiceProvider)
+            .enqueueAllCatalog()
+            .then((_) => ref.read(syncPushServiceProvider).pushAll()),
+        ref.read(syncRepositoryProvider).pullAll(),
+      ]);
+      final pushResult = outcomes[0] as SyncPushResult;
+      final pullResult = outcomes[1] as SyncPullResult;
+      if (pushResult.failed > 0 || pullResult.hasErrors) {
+        syncError = 'No se completó toda la sincronización del catálogo.';
+      }
+    } catch (e) {
+      syncError = e.toString();
+    }
+
+    ref.invalidate(linkedTpvInfoProvider);
+    state = syncError == null
+        ? const SyncIdle()
+        : SyncError('TPV vinculado; sincronización pendiente: $syncError');
+    _startRealtime();
+    _startHeartbeat();
+    _startPeriodicReconcile();
+    return linkedInfo;
   }
 
   Future<void> pull() async {
@@ -186,7 +219,8 @@ class SyncController extends Notifier<SyncState> {
       return;
     }
     if (serverStatus.status != 1) {
-      debugPrint('[SYNC] TPV status on server: ${serverStatus.status} — not active');
+      debugPrint(
+          '[SYNC] TPV status on server: ${serverStatus.status} — not active');
       return;
     }
 
@@ -267,7 +301,8 @@ class SyncController extends Notifier<SyncState> {
       final service = ref.read(syncPushServiceProvider);
       debugPrint('[SYNC_CONTROLLER] SyncPushService obtained');
       final result = await service.pushAll();
-      debugPrint('[SYNC_CONTROLLER] pushAll result: pushed=${result.pushed} failed=${result.failed}');
+      debugPrint(
+          '[SYNC_CONTROLLER] pushAll result: pushed=${result.pushed} failed=${result.failed}');
       state = result.failed > 0
           ? SyncError('${result.failed} operación(es) no se pudieron subir')
           : const SyncIdle();
@@ -292,7 +327,8 @@ class SyncController extends Notifier<SyncState> {
       final pushResult = await push();
       final pullResult = await _pull();
       if ((pushResult == null || pushResult.failed > 0) &&
-          pullResult != null && !pullResult.hasErrors) {
+          pullResult != null &&
+          !pullResult.hasErrors) {
         state = SyncError(
           pushResult == null
               ? 'No se pudieron subir las operaciones locales'
@@ -308,8 +344,7 @@ class SyncController extends Notifier<SyncState> {
   Future<void> _syncInBackground() {
     return _enqueueSync(() async {
       try {
-        final pushResult =
-            await ref.read(syncPushServiceProvider).pushAll();
+        final pushResult = await ref.read(syncPushServiceProvider).pushAll();
         if (pushResult.pushed > 0 || pushResult.failed > 0) {
           debugPrint(
             '[SYNC_CONTROLLER] background push: '

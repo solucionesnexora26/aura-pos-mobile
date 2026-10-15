@@ -4,9 +4,16 @@ import 'device_id_service.dart';
 
 /// Resultado de intentar activar el TPV con un código.
 class TpvActivationResult {
-  const TpvActivationResult({required this.tpvId, required this.name});
+  const TpvActivationResult({
+    required this.tpvId,
+    required this.name,
+    required this.activationCode,
+    required this.deviceId,
+  });
   final String tpvId;
   final String name;
+  final String activationCode;
+  final String deviceId;
 }
 
 /// Información del TPV vinculado al dispositivo actual.
@@ -54,7 +61,8 @@ class TpvActivationService {
     } on PostgrestException catch (e) {
       final String msg = e.message.toLowerCase();
       if (msg.contains('codigo_invalido')) {
-        throw const TpvActivationException('El código es inválido o ya fue usado.');
+        throw const TpvActivationException(
+            'El código es inválido o ya fue usado.');
       }
       if (msg.contains('dispositivo_ya_vinculado')) {
         throw const TpvActivationException(
@@ -74,7 +82,12 @@ class TpvActivationService {
     await _deviceIdService.saveTpvId(tpvId);
     await _deviceIdService.saveTpvName(name);
     await _deviceIdService.saveActivationCode(activationCode);
-    return TpvActivationResult(tpvId: tpvId, name: name);
+    return TpvActivationResult(
+      tpvId: tpvId,
+      name: name,
+      activationCode: activationCode,
+      deviceId: deviceId,
+    );
   }
 
   /// Verifica si este dispositivo ya está vinculado (tiene tpv_id guardado).
@@ -105,7 +118,8 @@ class TpvActivationService {
       try {
         row = await _client
             .from('tpvs')
-            .select('id, name, activation_code, device_id, status, last_seen_at')
+            .select(
+                'id, name, activation_code, device_id, status, last_seen_at')
             .eq('status', 1)
             .maybeSingle();
       } catch (_) {
@@ -139,7 +153,8 @@ class TpvActivationService {
     // 3) Hay tpv_id local → buscar la fila completa en Supabase.
     final dynamic res;
     try {
-      res = await _client.from('tpvs').select('*').eq('id', tpvId).maybeSingle();
+      res =
+          await _client.from('tpvs').select('*').eq('id', tpvId).maybeSingle();
     } catch (_) {
       return null;
     }

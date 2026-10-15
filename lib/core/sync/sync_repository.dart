@@ -242,8 +242,7 @@ class SyncRepository {
     final rows = await _client
         .from('categories')
         .select('*')
-        .isFilter('deleted_at', null)
-        .eq('is_active', true);
+        .isFilter('deleted_at', null);
     await _db.batch((batch) {
       for (final r in rows) {
         batch.insert(

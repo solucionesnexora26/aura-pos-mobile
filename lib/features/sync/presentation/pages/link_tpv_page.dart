@@ -19,6 +19,8 @@ class LinkTpvPage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final syncState = ref.watch(syncControllerProvider);
     final linkedInfoAsync = ref.watch(linkedTpvInfoProvider);
+    final recentLinkedInfo = useState<LinkedTpvInfo?>(null);
+    final linkedInfo = linkedInfoAsync.asData?.value ?? recentLinkedInfo.value;
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
@@ -32,7 +34,8 @@ class LinkTpvPage extends HookConsumerWidget {
         title: const Text('Vincular TPV'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.canPop() ? context.pop() : context.goNamed('settings'),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.goNamed('settings'),
         ),
       ),
       body: SafeArea(
@@ -41,22 +44,31 @@ class LinkTpvPage extends HookConsumerWidget {
             constraints: const BoxConstraints(maxWidth: 440),
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              child: linkedInfoAsync.when(
-                loading: () => const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 48),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-                error: (_, __) => _NotLinkedView(syncState: syncState, busy: busy),
-                data: (info) => info == null
-                    ? _NotLinkedView(syncState: syncState, busy: busy)
-                    : _LinkedView(
-                        info: info,
+              child: linkedInfo != null
+                  ? _LinkedView(
+                      info: linkedInfo,
+                      syncState: syncState,
+                      busy: busy,
+                      scheme: scheme,
+                      text: text,
+                      onUnlinked: () => recentLinkedInfo.value = null,
+                    )
+                  : linkedInfoAsync.when(
+                      loading: () => const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 48),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                      error: (_, __) => _NotLinkedView(
                         syncState: syncState,
                         busy: busy,
-                        scheme: scheme,
-                        text: text,
+                        onLinked: (info) => recentLinkedInfo.value = info,
                       ),
-              ),
+                      data: (_) => _NotLinkedView(
+                        syncState: syncState,
+                        busy: busy,
+                        onLinked: (info) => recentLinkedInfo.value = info,
+                      ),
+                    ),
             ),
           ),
         ),
@@ -68,9 +80,14 @@ class LinkTpvPage extends HookConsumerWidget {
 /// Vista para cuando el dispositivo NO está vinculado: formulario de código,
 /// escaneo QR y botón de vincular.
 class _NotLinkedView extends HookConsumerWidget {
-  const _NotLinkedView({required this.syncState, required this.busy});
+  const _NotLinkedView({
+    required this.syncState,
+    required this.busy,
+    required this.onLinked,
+  });
   final SyncState syncState;
   final bool busy;
+  final ValueChanged<LinkedTpvInfo> onLinked;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -83,7 +100,7 @@ class _NotLinkedView extends HookConsumerWidget {
       _ => null,
     };
 
-    void onSubmit() {
+    Future<void> onSubmit() async {
       final code = codeCtrl.text.trim();
       if (code.length < 4) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -92,20 +109,15 @@ class _NotLinkedView extends HookConsumerWidget {
         return;
       }
       FocusScope.of(context).unfocus();
-      ref.read(syncControllerProvider.notifier).activateAndPull(code);
+      final linked =
+          await ref.read(syncControllerProvider.notifier).activateAndPull(code);
+      if (linked != null && context.mounted) onLinked(linked);
     }
 
     void onScan() async {
-      final status = await Permission.camera.request();
-      if (!status.isGranted) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Permiso de cámara requerido para escanear')),
-        );
-        return;
-      }
+      if (!await _requestCameraAccess(context)) return;
       if (!context.mounted) return;
-      showModalBottomSheet<void>(
+      await showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         builder: (sheetContext) => _ScannerSheet(
@@ -211,6 +223,7 @@ class _LinkedView extends ConsumerWidget {
     required this.busy,
     required this.scheme,
     required this.text,
+    required this.onUnlinked,
   });
 
   final LinkedTpvInfo info;
@@ -218,6 +231,7 @@ class _LinkedView extends ConsumerWidget {
   final bool busy;
   final ColorScheme scheme;
   final TextTheme text;
+  final VoidCallback onUnlinked;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -354,6 +368,7 @@ class _LinkedView extends ConsumerWidget {
     );
     if (confirmed == true) {
       await ref.read(syncControllerProvider.notifier).unlink();
+      onUnlinked();
     }
   }
 }
@@ -383,7 +398,9 @@ class _InfoRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+              Text(label,
+                  style:
+                      text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
               const SizedBox(height: 2),
               Text(
                 value,
@@ -410,6 +427,7 @@ class _ScannerSheet extends HookWidget {
   @override
   Widget build(BuildContext context) {
     final controller = useMemoized(MobileScannerController.new);
+    final handledResult = useRef(false);
     useEffect(() {
       return controller.dispose;
     }, [controller]);
@@ -443,18 +461,50 @@ class _ScannerSheet extends HookWidget {
               child: MobileScanner(
                 controller: controller,
                 errorBuilder: (context, error, child) {
+                  final permissionDenied = error.errorCode ==
+                      MobileScannerErrorCode.permissionDenied;
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.videocam_off_outlined, size: 48, color: Theme.of(context).colorScheme.error),
+                          Icon(Icons.videocam_off_outlined,
+                              size: 48,
+                              color: Theme.of(context).colorScheme.error),
                           const SizedBox(height: 16),
                           Text(
-                            'No se pudo acceder a la cámara.\nVerifica los permisos en Ajustes.',
+                            permissionDenied
+                                ? 'Android no concedió acceso a la cámara. Revisa el permiso de Aura POS en Ajustes.'
+                                : 'No se pudo iniciar la cámara. Verifica el acceso y que otra aplicación no la esté usando.',
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          if (error.errorDetails?.message != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              error.errorDetails!.message!,
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final granted =
+                                  await _requestCameraAccess(context);
+                              if (!granted || !context.mounted) return;
+                              try {
+                                await controller.start();
+                              } catch (_) {
+                                // MobileScanner muestra el error actualizado en
+                                // este mismo panel si la cámara sigue bloqueada.
+                              }
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: Text(permissionDenied
+                                ? 'Revisar permiso'
+                                : 'Reintentar cámara'),
                           ),
                         ],
                       ),
@@ -462,10 +512,12 @@ class _ScannerSheet extends HookWidget {
                   );
                 },
                 onDetect: (capture) async {
+                  if (handledResult.value) return;
                   final barcode = capture.barcodes.firstOrNull?.rawValue;
                   if (barcode == null) return;
+                  handledResult.value = true;
                   await controller.stop();
-                  onCode(barcode);
+                  if (context.mounted) onCode(barcode);
                 },
               ),
             ),
@@ -473,5 +525,75 @@ class _ScannerSheet extends HookWidget {
         ),
       ),
     );
+  }
+}
+
+/// Comprueba antes de pedir el permiso para no mostrar un falso error cuando
+/// Android ya lo concedió. Si Android/OEM lo bloqueó, ofrece ir directamente
+/// a la ficha de Aura POS en Ajustes.
+Future<bool> _requestCameraAccess(BuildContext context) async {
+  try {
+    var status = await Permission.camera.status;
+    if (status.isGranted) return true;
+
+    if (!status.isPermanentlyDenied && !status.isRestricted) {
+      await Permission.camera.request();
+      // Consultar de nuevo el estado que Android dejó realmente aplicado;
+      // algunos fabricantes responden antes de actualizar AppOps.
+      status = await Permission.camera.status;
+      if (status.isGranted) return true;
+    }
+
+    if (!context.mounted) return false;
+    final openSettings = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Permiso de cámara'),
+        content: Text(
+          status.isPermanentlyDenied || status.isRestricted
+              ? 'Android bloqueó el permiso de cámara para Aura POS. Habilítalo en Ajustes de la aplicación y vuelve a escanear.'
+              : 'Android aún no concedió el permiso de cámara. Comprueba el permiso de Aura POS en Ajustes y vuelve a escanear.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.settings_outlined),
+            label: const Text('Abrir ajustes'),
+          ),
+        ],
+      ),
+    );
+    if (openSettings == true) await openAppSettings();
+    return false;
+  } catch (error) {
+    debugPrint(
+        '[TPV_LINK] No se pudo consultar/solicitar permiso cámara: $error');
+    if (!context.mounted) return false;
+    final openSettings = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('No se pudo comprobar la cámara'),
+        content: const Text(
+          'Revisa el permiso de cámara de Aura POS en Ajustes. Si ya está habilitado, vuelve a la aplicación e inténtalo otra vez.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cerrar'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.settings_outlined),
+            label: const Text('Abrir ajustes'),
+          ),
+        ],
+      ),
+    );
+    if (openSettings == true) await openAppSettings();
+    return false;
   }
 }
