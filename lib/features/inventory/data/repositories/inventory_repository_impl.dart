@@ -65,7 +65,8 @@ class InventoryRepositoryImpl implements InventoryRepository {
           : productRow.stockQuantity;
 
       final double delta = type.isPositive ? quantity : -quantity;
-      final double stockAfter = stockBefore + delta;
+      final double rawAfter = stockBefore + delta;
+      final double stockAfter = rawAfter < 0 ? 0.0 : rawAfter;
 
       // Actualizar stock
       if (variantId != null) {

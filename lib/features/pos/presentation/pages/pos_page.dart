@@ -517,15 +517,33 @@ class _ScannerSheet extends HookConsumerWidget {
         await controller.stop();
         final result =
             await ref.read(getProductByBarcodeUseCaseProvider).call(barcode);
+        if (!context.mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.of(context).pop();
         result.fold(
-          (_) {},
+          (f) {
+            messenger.showSnackBar(
+              SnackBar(content: Text('Error al buscar código: ${f.message}')),
+            );
+          },
           (product) {
-            if (product != null) {
-              ref.read(cartProvider.notifier).addProduct(product);
+            if (product == null) {
+              messenger.showSnackBar(
+                SnackBar(content: Text('Producto no encontrado: $barcode')),
+              );
+              return;
+            }
+            final added = ref.read(cartProvider.notifier).addProduct(product);
+            if (!added) {
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text('Stock máximo alcanzado para ${product.name}'),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
             }
           },
         );
-        if (context.mounted) Navigator.of(context).pop();
       },
     );
   }

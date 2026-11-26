@@ -1,7 +1,7 @@
 name: aura_pos
 description: Aura POS - Aplicación móvil de punto de venta de nivel empresarial.
 publish_to: "none"
-version: 1.0.9+14
+version: 1.0.10+15
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

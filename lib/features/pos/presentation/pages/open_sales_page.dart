@@ -7,6 +7,8 @@ import '../../../../core/router/route_names.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_drawer.dart';
 import '../../../../core/widgets/state_views.dart';
+import '../../../customers/domain/entities/customer_entity.dart';
+import '../../../customers/presentation/providers/customer_providers.dart';
 import '../../../products/domain/entities/product_entity.dart';
 import '../../../products/presentation/providers/product_providers.dart';
 import '../../data/repositories/sale_repository_impl.dart';
@@ -123,14 +125,25 @@ class OpenSalesPage extends ConsumerWidget {
         unitPrice: row.unitPrice,
         discount: row.discount,
         taxRate: row.taxRate,
+        isReturn: row.isReturn,
+        returnReason: row.returnReason,
+        returnedFromTicket: row.returnedFromTicket,
         note: row.note,
       ));
+    }
+
+    CustomerEntity? customer;
+    if (sale.customerId != null && sale.customerId!.isNotEmpty) {
+      final custResult =
+          await ref.read(getCustomerByIdUseCaseProvider).call(sale.customerId!);
+      customer = custResult.fold((_) => null, (c) => c);
     }
 
     ref.read(cartProvider.notifier).loadOpenSale(
           saleId: sale.id,
           label: sale.ticketLabel,
           items: items,
+          customer: customer,
           note: sale.note,
         );
     if (context.mounted) context.go(RoutePaths.pos);

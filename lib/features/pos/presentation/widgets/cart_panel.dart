@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
-import '../../../cash_register/presentation/providers/cash_register_providers.dart';
 import '../../../customers/domain/entities/customer_entity.dart';
 import '../../../customers/presentation/providers/customer_providers.dart';
 import '../../domain/entities/cart_entity.dart';
@@ -136,17 +135,14 @@ class _CartHeader extends StatelessWidget {
     final saleRepo = ref.read(saleRepositoryProvider);
     final newLabel = label.isEmpty ? null : label;
 
-    // Obtener la caja abierta para vincularla a la venta
-    String? cashRegisterId;
-    final openRegResult = await ref.read(cashRegisterRepositoryProvider).getOpenRegister();
-    openRegResult.fold((_) {}, (reg) => cashRegisterId = reg?.id);
-
+    // La caja se vincula al cobrar (completeSale); guardar un ticket abierto
+    // no debe depender de consultar la caja.
     final result = cart.openSaleId != null
         ? await saleRepo.updateOpenSale(cart.openSaleId!, cart.copyWith(openSaleLabel: newLabel))
         : await saleRepo.createOpenSale(
             cart.copyWith(openSaleLabel: newLabel),
             session.user?.id ?? '',
-            cashRegisterId,
+            null,
           );
 
     result.fold(

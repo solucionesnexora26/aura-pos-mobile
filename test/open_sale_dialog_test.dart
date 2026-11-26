@@ -188,6 +188,7 @@ class _FakeSaleRepository implements SaleRepository {
     required List<({PaymentMethod method, double amount, String? reference})> payments,
     required double changeGiven,
     required String userId,
+    String? cashRegisterId,
   }) async =>
       throw UnimplementedError();
 

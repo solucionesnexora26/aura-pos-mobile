@@ -26,10 +26,16 @@ class AppExitGuard extends StatelessWidget {
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
 
-        final currentPath = GoRouterState.of(context).matchedLocation;
+        String? currentPath;
+        try {
+          currentPath = GoRouterState.of(context).matchedLocation;
+        } catch (_) {
+          currentPath = null;
+        }
 
-        // Si estamos en el dashboard, preguntar si desea salir
-        if (currentPath == RoutePaths.dashboard) {
+        // Si estamos en el dashboard (o fuera de GoRouter en pruebas de widget),
+        // preguntar si desea salir
+        if (currentPath == null || currentPath == RoutePaths.dashboard) {
           showExitConfirmationDialog(context).then((exit) {
             if (exit == true) {
               SystemNavigator.pop();

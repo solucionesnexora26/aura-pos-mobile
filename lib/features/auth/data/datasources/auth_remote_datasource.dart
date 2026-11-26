@@ -244,9 +244,11 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   }) async {
     final dynamic response;
     try {
+      // Verificación en el servidor: el hash del PIN nunca se descarga al
+      // dispositivo. La RPC devuelve el perfil solo si el PIN es correcto.
       response = await _requireClient.rpc<dynamic>(
-        'get_profile_for_pin',
-        params: {'p_username': username.trim()},
+        'verify_pin_and_get_profile',
+        params: {'p_username': username.trim(), 'p_pin': pin},
       );
     } catch (e) {
       debugPrint('[AUTH_REMOTE][ERROR] verifyPinRemotely: $e');

@@ -56,9 +56,9 @@ Future<void> main() async {
     publishableKey: SupabaseConfig.supabaseAnonKey,
     headers: {SupabaseConfig.deviceIdHeader: deviceId},
   );
-  print('[AURA-UPDATE] [MAIN] Supabase initialized: ${Supabase.instance.isInitialized}');
-  print('[AURA-UPDATE] [MAIN] Supabase URL: ${SupabaseConfig.supabaseUrl}');
-  print('[AURA-UPDATE] [MAIN] Supabase key prefix: ${SupabaseConfig.supabaseAnonKey.substring(0, 10)}...');
+  debugPrint(
+    '[AURA-UPDATE] [MAIN] Supabase initialized: ${Supabase.instance.isInitialized}',
+  );
 
   runApp(
     const ProviderScope(

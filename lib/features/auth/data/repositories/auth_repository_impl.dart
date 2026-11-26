@@ -172,21 +172,17 @@ class AuthRepositoryImpl implements AuthRepository {
       RemoteProfile? profile;
       bool verifiedRemotely = false;
       try {
-        // 1) RPC security definer: obtiene el perfil activo sin depender del
-        //    estado del TPV (bypass de RLS). La verificación del PIN se hace
-        //    localmente con PinHasher.verify (soporta formatos ':' y '::').
+        // 1) RPC security definer: verifica el PIN en el servidor sin
+        //    depender del estado del TPV (bypass de RLS) y solo devuelve el
+        //    perfil si el PIN coincide. El hash ya no viaja al dispositivo.
         profile = await _remoteDataSource.verifyPinRemotely(
           username: username,
           pin: pin,
         );
         if (profile != null) {
-          verifiedRemotely = PinHasher.verify(
-            pin,
-            profile.pinSalt ?? '',
-            profile.pinHash ?? '',
-          );
-          debugPrint('[AUTH_PIN] Reconciliación: RPC ok profile=${profile.id} '
-              'verifiedRemotely=$verifiedRemotely');
+          // El servidor ya validó el PIN: no se re-verifica localmente.
+          verifiedRemotely = true;
+          debugPrint('[AUTH_PIN] Reconciliación: RPC ok profile=${profile.id}');
         } else {
           // 2) Respaldo: lectura anónima de profiles (solo con TPV activo).
           profile = await _remoteDataSource.fetchProfileById(localUser.id);
@@ -199,7 +195,7 @@ class AuthRepositoryImpl implements AuthRepository {
         }
         debugPrint(
           '[AUTH_PIN] Reconciliación: profile=${profile?.id} '
-          'verifiedRemotely=$verifiedRemotely pinHash=${profile?.pinHash ?? 'null'}',
+          'verifiedRemotely=$verifiedRemotely',
         );
       } catch (e, st) {
         debugPrint('[AUTH_PIN][ERROR] Reconciliación falló: $e');
@@ -414,9 +410,14 @@ class AuthRepositoryImpl implements AuthRepository {
     if (pin != null && pin.isNotEmpty) {
       pinSalt = PinHasher.generateSalt();
       pinHash = PinHasher.hash(pin, pinSalt);
-    } else {
+    } else if (profile.pinHash != null && profile.pinHash!.isNotEmpty) {
       pinSalt = profile.pinSalt ?? '';
-      pinHash = profile.pinHash ?? '';
+      pinHash = profile.pinHash!;
+    } else {
+      // El servidor ya no expone el hash (verificación server-side). Se
+      // conserva el hash local para permitir el desbloqueo offline.
+      pinSalt = existing?.pinSalt ?? '';
+      pinHash = existing?.pinHash ?? '';
     }
 
     final companion = UsersCompanion(

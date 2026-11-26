@@ -36,8 +36,9 @@ class PaymentPage extends HookConsumerWidget {
     final error = useState<String?>(null);
 
     // Métodos de pago activos configurados en el servidor (o fallback local).
+    // Se filtra 'Mixto' (código 5) porque cada pago individual debe tener su propio método.
     final serverMethods = ref.watch(activePaymentMethodsProvider).valueOrNull ?? [];
-    final paymentMethods = serverMethods.isNotEmpty
+    final rawMethods = serverMethods.isNotEmpty
         ? serverMethods
         : const [
             PaymentMethodConfig(code: 0, label: 'Efectivo', icon: 'banknote', isCredit: false),
@@ -45,9 +46,9 @@ class PaymentPage extends HookConsumerWidget {
             PaymentMethodConfig(code: 2, label: 'Transferencia', icon: 'arrow-left-right', isCredit: false),
             PaymentMethodConfig(code: 3, label: 'Nequi', icon: 'smartphone', isCredit: false),
             PaymentMethodConfig(code: 4, label: 'Daviplata', icon: 'smartphone', isCredit: false),
-            PaymentMethodConfig(code: 5, label: 'Mixto', icon: 'arrow-left-right', isCredit: false),
             PaymentMethodConfig(code: 6, label: 'Crédito', icon: '', isCredit: true),
           ];
+    final paymentMethods = rawMethods.where((m) => m.code != 5).toList();
 
     final totalPaid = payments.value.fold(0.0, (sum, p) => sum + p.amount);
     final remaining = cart.total - totalPaid;

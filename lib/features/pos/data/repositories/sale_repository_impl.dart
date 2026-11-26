@@ -12,6 +12,15 @@ import '../../../../core/sync/sync_serializers.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../pos/domain/entities/cart_entity.dart';
 
+/// Stock resultante de aplicar una línea de venta al inventario local.
+///
+/// `lineQuantity` es positivo en ventas y negativo en devoluciones, por lo que
+/// la operación es siempre `actual - cantidad`. Nunca baja de cero.
+double stockAfterSaleLine(double current, double lineQuantity) {
+  final double after = current - lineQuantity;
+  return after < 0 ? 0 : after;
+}
+
 // ─── Entidad de venta (dominio) ───────────────────────────────────────────────
 
 class SaleEntity {
@@ -257,6 +266,10 @@ class SaleRepositoryImpl implements SaleRepository {
     try {
       await _db.transaction(() async {
         final now = DateTime.now();
+        final existing = await (_db.select(_db.sales)
+              ..where((tbl) => tbl.id.equals(saleId)))
+            .getSingleOrNull();
+        final wasPaid = existing?.status == SaleStatus.paid;
         var companion = SalesCompanion(
           customerId: Value(cart.customer?.id),
           status: const Value(SaleStatus.paid),
@@ -280,7 +293,8 @@ class SaleRepositoryImpl implements SaleRepository {
         await (_db.delete(_db.saleItems)..where((tbl) => tbl.saleId.equals(saleId))).go();
         await _insertItems(saleId, cart.items);
 
-        // Registrar pagos
+        // Reemplazar pagos para que un reintento de cobro no los duplique.
+        await (_db.delete(_db.payments)..where((tbl) => tbl.saleId.equals(saleId))).go();
         for (final p in payments) {
           await _db.into(_db.payments).insert(PaymentsCompanion.insert(
             id: Value(const Uuid().v4()),
@@ -289,6 +303,14 @@ class SaleRepositoryImpl implements SaleRepository {
             amount: p.amount,
             reference: Value(p.reference),
           ));
+        }
+
+        // Descontar stock local al cobrar. Sin esto, la app offline seguiría
+        // vendiendo unidades ya comprometidas hasta la próxima sincronización.
+        // El servidor vuelve a aplicar el descuento autoritativo al subir la
+        // venta (apply_sale_inventory).
+        if (!wasPaid) {
+          await _applyLocalStockDelta(cart.items, now);
         }
       });
       final row = await (_db.select(_db.sales)..where((tbl) => tbl.id.equals(saleId))).getSingle();
@@ -367,6 +389,48 @@ class SaleRepositoryImpl implements SaleRepository {
         returnReason: Value(item.returnReason),
         returnedFromTicket: Value(item.returnedFromTicket),
       ));
+    }
+  }
+
+  /// Ajusta el stock local por las líneas de la venta.
+  ///
+  /// Las ventas descuentan inventario y las devoluciones (`quantity` negativo)
+  /// lo reincorporan. Solo se tocan productos con `trackStock`; el servidor
+  /// sigue siendo la fuente autoritativa al aplicar `apply_sale_inventory`.
+  Future<void> _applyLocalStockDelta(
+    List<CartItemEntity> items,
+    DateTime now,
+  ) async {
+    for (final item in items) {
+      if (!item.product.trackStock) continue;
+      if (item.quantity == 0) continue;
+
+      if (item.variant != null) {
+        final variant = await (_db.select(_db.productVariants)
+              ..where((tbl) => tbl.id.equals(item.variant!.id)))
+            .getSingleOrNull();
+        if (variant == null) continue;
+        await (_db.update(_db.productVariants)
+              ..where((tbl) => tbl.id.equals(variant.id)))
+            .write(ProductVariantsCompanion(
+          stockQuantity: Value(
+            stockAfterSaleLine(variant.stockQuantity, item.quantity),
+          ),
+        ));
+      } else {
+        final product = await (_db.select(_db.products)
+              ..where((tbl) => tbl.id.equals(item.product.id)))
+            .getSingleOrNull();
+        if (product == null) continue;
+        await (_db.update(_db.products)
+              ..where((tbl) => tbl.id.equals(product.id)))
+            .write(ProductsCompanion(
+          stockQuantity: Value(
+            stockAfterSaleLine(product.stockQuantity, item.quantity),
+          ),
+          updatedAt: Value(now),
+        ));
+      }
     }
   }
 
